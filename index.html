@@ -657,6 +657,17 @@
           localStorage.setItem('kopkay_open_bills_v1', JSON.stringify(openBills));
         }, [openBills]);
 
+        const [taxConfig, setTaxConfig] = useState(() =>
+          loadStorage('kopkay_tax_config_v1', {
+            enabled: false,
+            rate: 10,
+            label: 'PB1 / Pajak Resto',
+          })
+        );
+        useEffect(() => {
+          localStorage.setItem('kopkay_tax_config_v1', JSON.stringify(taxConfig));
+        }, [taxConfig]);
+
         const [expenses, setExpenses] = useState(() => loadStorage('kopkay_expenses_v1', []));
         useEffect(() => {
           localStorage.setItem('kopkay_expenses_v1', JSON.stringify(expenses));
@@ -816,6 +827,9 @@
         }, [menuItems, tenants, selectedTenant, selectedCategory, searchQuery]);
 
         const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+        const taxRateDecimal = taxConfig?.enabled ? (Number(taxConfig.rate) || 0) / 100 : 0;
+        const taxAmount = Math.round(subtotal * taxRateDecimal);
+        const grandTotal = subtotal + taxAmount;
         const totalCartQty = cart.reduce((sum, c) => sum + c.qty, 0);
         const getQtyInCart = (id) => cart.find((c) => c.id === id)?.qty || 0;
         const getTenantName = (id) => tenants.find((t) => t.id === id)?.name || id;
@@ -839,8 +853,8 @@
             setErrorMsg('Keranjang pesanan masih kosong.');
             return;
           }
-          const numericCash = paymentMethod === 'Tunai' ? Number(cashReceived) || subtotal : subtotal;
-          if (paymentMethod === 'Tunai' && numericCash < subtotal) {
+          const numericCash = paymentMethod === 'Tunai' ? Number(cashReceived) || grandTotal : grandTotal;
+          if (paymentMethod === 'Tunai' && numericCash < grandTotal) {
             setErrorMsg('Uang tunai yang diterima kurang dari total tagihan.');
             return;
           }
@@ -870,10 +884,14 @@
             customerName: customerName.trim() || 'Pelanggan Umum',
             orderNote: orderNote.trim(),
             items: [...cart],
-            total: subtotal,
+            subtotal,
+            taxRate: taxConfig?.enabled ? Number(taxConfig.rate) || 0 : 0,
+            taxLabel: taxConfig?.label || 'Pajak',
+            taxAmount,
+            total: grandTotal,
             paymentMethod,
             cashReceived: numericCash,
-            changeAmount: paymentMethod === 'Tunai' ? numericCash - subtotal : 0,
+            changeAmount: paymentMethod === 'Tunai' ? numericCash - grandTotal : 0,
             tenantBreakdown,
           };
 
@@ -921,7 +939,9 @@
                       label: resolvedLabel,
                       orderNote: orderNote.trim(),
                       items: [...cart],
-                      total: subtotal,
+                      subtotal,
+                      taxAmount,
+                      total: grandTotal,
                     }
                   : b
               )
@@ -937,7 +957,9 @@
               label: resolvedLabel,
               orderNote: orderNote.trim(),
               items: [...cart],
-              total: subtotal,
+              subtotal,
+              taxAmount,
+              total: grandTotal,
             };
             setOpenBills((prev) => [newBill, ...prev]);
             setActiveBillId(newBill.id);
@@ -1363,8 +1385,8 @@
                 const smartPresets = Array.from(
                   new Set(
                     denomSteps
-                      .map((step) => Math.ceil(subtotal / step) * step)
-                      .filter((amt) => amt >= subtotal)
+                      .map((step) => Math.ceil(grandTotal / step) * step)
+                      .filter((amt) => amt >= grandTotal)
                   )
                 ).slice(0, 4);
 
@@ -1375,9 +1397,9 @@
                       <div className="flex flex-wrap gap-1">
                         <button
                           type="button"
-                          onClick={() => setCashReceived(String(subtotal))}
+                          onClick={() => setCashReceived(String(grandTotal))}
                           className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border ${
-                            Number(cashReceived) === subtotal
+                            Number(cashReceived) === grandTotal
                               ? 'bg-teal-600 text-white border-teal-600'
                               : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-transparent'
                           }`}
@@ -1404,22 +1426,35 @@
                       type="number"
                       value={cashReceived}
                       onChange={(e) => setCashReceived(e.target.value)}
-                      placeholder={`Minimal ${subtotal} (bisa ketik manual)`}
+                      placeholder={`Minimal ${grandTotal} (bisa ketik manual)`}
                       className="w-full px-3 py-1.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                     />
-                    {cashReceived !== '' && Number(cashReceived) >= subtotal && (
+                    {cashReceived !== '' && Number(cashReceived) >= grandTotal && (
                       <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex justify-between items-center text-xs font-extrabold text-emerald-700 dark:text-emerald-300">
                         <span>Kembalian Otomatis:</span>
-                        <span>{formatRp(Number(cashReceived) - subtotal)}</span>
+                        <span>{formatRp(Number(cashReceived) - grandTotal)}</span>
                       </div>
                     )}
                   </div>
                 );
               })()}
 
+              {taxConfig?.enabled && cart.length > 0 && (
+                <div className="space-y-1 text-xs border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <div className="flex justify-between text-slate-500">
+                    <span>Subtotal Menu</span>
+                    <span>{formatRp(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-amber-600 font-semibold">
+                    <span>{taxConfig.label || 'Pajak'} ({taxConfig.rate}%)</span>
+                    <span>+{formatRp(taxAmount)}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Total Bayar</span>
-                <span className="text-xl font-extrabold text-slate-900 dark:text-white">{formatRp(subtotal)}</span>
+                <span className="text-xl font-extrabold text-slate-900 dark:text-white">{formatRp(grandTotal)}</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1449,15 +1484,20 @@
             {/* Desktop Sidebar */}
             <aside className="hidden lg:flex w-64 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col justify-between">
               <div>
-                <div className="h-16 px-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800">
-                  <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setSettingsDrawerOpen(true)}
+                  title="Buka Pengaturan, Pajak & Backup Data"
+                  className="w-full h-16 px-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 text-left transition"
+                >
+                  <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm">
                     <Icon name="coffee" className="w-5 h-5" />
                   </div>
                   <div>
                     <h1 className="font-bold text-sm text-slate-900 dark:text-white">KASIR KOPKAY</h1>
-                    <p className="text-[11px] font-medium text-teal-600 dark:text-teal-400">KOPITIAM KOPI & KAYA</p>
+                    <p className="text-[11px] font-medium text-teal-600 dark:text-teal-400">Pengaturan & Pajak ▾</p>
                   </div>
-                </div>
+                </button>
                 <nav className="p-3 space-y-1.5">
                   {navItems.map((item) => (
                     <button
@@ -1759,7 +1799,7 @@
                             <Icon name="cart" className="w-4 h-4" />
                             <span>{totalCartQty} Item di Keranjang</span>
                           </div>
-                          <span>{formatRp(subtotal)} →</span>
+                          <span>{formatRp(grandTotal)} →</span>
                         </button>
                       </div>
                     )}
@@ -3154,6 +3194,71 @@
                     </div>
                   </div>
 
+                  <div className="space-y-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Pengaturan Pajak Transaksi</p>
+                        <p className="text-[10px] text-slate-400">Otomatis ditambahkan ke keranjang & struk jika aktif</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTaxConfig((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                        className={`px-3 py-1 rounded-full text-[11px] font-bold transition ${
+                          taxConfig?.enabled
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {taxConfig?.enabled ? `Aktif (${taxConfig.rate}%)` : 'Nonaktif (0%)'}
+                      </button>
+                    </div>
+
+                    {taxConfig?.enabled && (
+                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Nama Pajak</label>
+                            <input
+                              type="text"
+                              value={taxConfig.label}
+                              onChange={(e) => setTaxConfig((prev) => ({ ...prev, label: e.target.value }))}
+                              placeholder="PB1 / PPN"
+                              className="w-full px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Tarif (%)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                              value={taxConfig.rate}
+                              onChange={(e) => setTaxConfig((prev) => ({ ...prev, rate: Number(e.target.value) || 0 }))}
+                              className="w-full px-2.5 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {[5, 10, 11].map((presetRate) => (
+                            <button
+                              key={presetRate}
+                              type="button"
+                              onClick={() => setTaxConfig((prev) => ({ ...prev, rate: presetRate }))}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                Number(taxConfig.rate) === presetRate
+                                  ? 'bg-teal-600 text-white border-teal-600'
+                                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              {presetRate}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                     <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Mode Akses & Tampilan</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -3671,6 +3776,18 @@
                     </div>
 
                     <div className="space-y-1">
+                      {Number(receiptOrder.taxAmount) > 0 && (
+                        <>
+                          <div className="flex justify-between">
+                            <span>Subtotal</span>
+                            <span>{formatRp(receiptOrder.subtotal)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>{receiptOrder.taxLabel || 'Pajak'} ({receiptOrder.taxRate}%)</span>
+                            <span>{formatRp(receiptOrder.taxAmount)}</span>
+                          </div>
+                        </>
+                      )}
                       <div className="flex justify-between font-bold text-sm">
                         <span>TOTAL</span>
                         <span>{formatRp(receiptOrder.total)}</span>
@@ -3787,6 +3904,10 @@
         });
 
         pushText(lineSep);
+        if (Number(order.taxAmount) > 0) {
+          pushText(padLine('Subtotal', formatRp(order.subtotal)) + '\n');
+          pushText(padLine(`${order.taxLabel || 'Pajak'} (${order.taxRate}%)`, formatRp(order.taxAmount)) + '\n');
+        }
         push(0x1b, 0x45, 0x01);
         pushText(padLine('TOTAL', formatRp(order.total)) + '\n');
         push(0x1b, 0x45, 0x00);
