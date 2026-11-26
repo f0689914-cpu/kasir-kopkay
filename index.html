@@ -795,7 +795,7 @@
 
           if (orderType === 'Dine-in') {
             setTables((prev) =>
-              prev.map((t) => (t.name === tableName ? { ...t, status: 'occupied', guestName: newOrder.customerName } : t))
+              prev.map((t) => (t.name === tableName ? { ...t, status: 'available', guestName: '' } : t))
             );
           }
 
