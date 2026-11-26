@@ -657,16 +657,24 @@
           localStorage.setItem('kopkay_open_bills_v1', JSON.stringify(openBills));
         }, [openBills]);
 
-        const [taxConfig, setTaxConfig] = useState(() =>
-          loadStorage('kopkay_tax_config_v1', {
-            enabled: false,
-            rate: 10,
-            label: 'PB1 / Pajak Resto',
+        const [pphConfig, setPphConfig] = useState(() =>
+          loadStorage('kopkay_pph_config_v1', {
+            enabled: true,
+            rate: 0.5,
+            label: 'PPh Final UMKM (0,5%)',
+            cycle: '6_months',
+            basis: 'kopkay_net',
           })
         );
         useEffect(() => {
-          localStorage.setItem('kopkay_tax_config_v1', JSON.stringify(taxConfig));
-        }, [taxConfig]);
+          localStorage.setItem('kopkay_pph_config_v1', JSON.stringify(pphConfig));
+        }, [pphConfig]);
+
+        const [pphPayments, setPphPayments] = useState(() => loadStorage('kopkay_pph_payments_v1', []));
+        useEffect(() => {
+          localStorage.setItem('kopkay_pph_payments_v1', JSON.stringify(pphPayments));
+        }, [pphPayments]);
+        const [pphPayNote, setPphPayNote] = useState('');
 
         const [expenses, setExpenses] = useState(() => loadStorage('kopkay_expenses_v1', []));
         useEffect(() => {
@@ -827,9 +835,6 @@
         }, [menuItems, tenants, selectedTenant, selectedCategory, searchQuery]);
 
         const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
-        const taxRateDecimal = taxConfig?.enabled ? (Number(taxConfig.rate) || 0) / 100 : 0;
-        const taxAmount = Math.round(subtotal * taxRateDecimal);
-        const grandTotal = subtotal + taxAmount;
         const totalCartQty = cart.reduce((sum, c) => sum + c.qty, 0);
         const getQtyInCart = (id) => cart.find((c) => c.id === id)?.qty || 0;
         const getTenantName = (id) => tenants.find((t) => t.id === id)?.name || id;
@@ -853,8 +858,8 @@
             setErrorMsg('Keranjang pesanan masih kosong.');
             return;
           }
-          const numericCash = paymentMethod === 'Tunai' ? Number(cashReceived) || grandTotal : grandTotal;
-          if (paymentMethod === 'Tunai' && numericCash < grandTotal) {
+          const numericCash = paymentMethod === 'Tunai' ? Number(cashReceived) || subtotal : subtotal;
+          if (paymentMethod === 'Tunai' && numericCash < subtotal) {
             setErrorMsg('Uang tunai yang diterima kurang dari total tagihan.');
             return;
           }
@@ -884,14 +889,10 @@
             customerName: customerName.trim() || 'Pelanggan Umum',
             orderNote: orderNote.trim(),
             items: [...cart],
-            subtotal,
-            taxRate: taxConfig?.enabled ? Number(taxConfig.rate) || 0 : 0,
-            taxLabel: taxConfig?.label || 'Pajak',
-            taxAmount,
-            total: grandTotal,
+            total: subtotal,
             paymentMethod,
             cashReceived: numericCash,
-            changeAmount: paymentMethod === 'Tunai' ? numericCash - grandTotal : 0,
+            changeAmount: paymentMethod === 'Tunai' ? numericCash - subtotal : 0,
             tenantBreakdown,
           };
 
@@ -939,9 +940,7 @@
                       label: resolvedLabel,
                       orderNote: orderNote.trim(),
                       items: [...cart],
-                      subtotal,
-                      taxAmount,
-                      total: grandTotal,
+                      total: subtotal,
                     }
                   : b
               )
@@ -957,9 +956,7 @@
               label: resolvedLabel,
               orderNote: orderNote.trim(),
               items: [...cart],
-              subtotal,
-              taxAmount,
-              total: grandTotal,
+              total: subtotal,
             };
             setOpenBills((prev) => [newBill, ...prev]);
             setActiveBillId(newBill.id);
@@ -1168,6 +1165,101 @@
           summaryByTenant
             .filter((t) => t.id === 'kopkay')
             .reduce((sum, t) => sum + t.grossSales, 0) + shiftTotals.commission;
+
+        const allTimeKopkayRevenue = useMemo(() => {
+          return orders.reduce((sum, order) => {
+            let kopkayPart = 0;
+            (order.items || []).forEach((item) => {
+              const tInfo = tenants.find((t) => t.id === item.tenantId);
+              const lineGross = item.price * item.qty;
+              if (item.tenantId === 'kopkay') {
+                kopkayPart += lineGross;
+              } else if (tInfo && tInfo.commissionRate > 0) {
+                kopkayPart += Math.round(lineGross * tInfo.commissionRate);
+              }
+            });
+            return sum + kopkayPart;
+          }, 0);
+        }, [orders, tenants]);
+
+        const allTimeGrossAllTenants = useMemo(
+          () => orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0),
+          [orders]
+        );
+
+        const pphBaseAmount =
+          pphConfig?.basis === 'all_gross' ? allTimeGrossAllTenants : allTimeKopkayRevenue;
+        const pphRateDecimal = pphConfig?.enabled ? (Number(pphConfig.rate) || 0) / 100 : 0;
+        const totalPphAccrued = Math.round(pphBaseAmount * pphRateDecimal);
+        const totalPphPaid = useMemo(
+          () => pphPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0),
+          [pphPayments]
+        );
+        const remainingPphReserve = Math.max(0, totalPphAccrued - totalPphPaid);
+
+        const monthlyPphBreakdown = useMemo(() => {
+          const monthMap = new Map();
+          orders.forEach((order) => {
+            const d = new Date(order.createdAt);
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const monthLabel = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+            let kopkayPart = 0;
+            (order.items || []).forEach((item) => {
+              const tInfo = tenants.find((t) => t.id === item.tenantId);
+              const lineGross = item.price * item.qty;
+              if (item.tenantId === 'kopkay') {
+                kopkayPart += lineGross;
+              } else if (tInfo && tInfo.commissionRate > 0) {
+                kopkayPart += Math.round(lineGross * tInfo.commissionRate);
+              }
+            });
+            const basisVal = pphConfig?.basis === 'all_gross' ? Number(order.total) || 0 : kopkayPart;
+            const prev = monthMap.get(monthKey) || { monthKey, monthLabel, basisTotal: 0, orderCount: 0 };
+            prev.basisTotal += basisVal;
+            prev.orderCount += 1;
+            monthMap.set(monthKey, prev);
+          });
+          return Array.from(monthMap.values())
+            .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
+            .map((m) => ({
+              ...m,
+              pphEstimated: Math.round(m.basisTotal * pphRateDecimal),
+            }));
+        }, [orders, tenants, pphConfig?.basis, pphRateDecimal]);
+
+        const handleRecordPphDeposit = (amountToRecord) => {
+          const amt = Number(amountToRecord);
+          if (!amt || amt <= 0) return;
+          const periodText =
+            pphConfig.cycle === 'monthly'
+              ? 'Bulanan'
+              : pphConfig.cycle === 'yearly'
+              ? 'Tahunan (12 Bulan)'
+              : 'Per 6 Bulan (Semester)';
+          const paymentRec = {
+            id: 'PPH-' + String(Date.now()).slice(-6),
+            paidAt: new Date().toISOString(),
+            amount: amt,
+            rate: Number(pphConfig.rate) || 0,
+            label: pphConfig.label || 'PPh Final UMKM',
+            cycle: periodText,
+            note: pphPayNote.trim(),
+          };
+          setPphPayments((prev) => [paymentRec, ...prev]);
+          setExpenses((prev) => [
+            {
+              id: 'EXP-' + String(Date.now()).slice(-6),
+              createdAt: new Date().toISOString(),
+              title: `Setor ${pphConfig.label || 'PPh Usaha'} (${periodText})`,
+              amount: amt,
+              category: 'Pajak Penghasilan (PPh)',
+              source: 'Transfer / Rekening',
+              note: pphPayNote.trim() || `Setoran ${pphConfig.rate}% penghasilan Kopitiam`,
+            },
+            ...prev,
+          ]);
+          setPphPayNote('');
+        };
 
         const exportCSV = () => {
           const headers = ['Nama Tenant', 'Skema', 'Item Terjual', 'Omzet Kotor (Rp)', 'Potongan 10% (Rp)', 'Hak Bersih Tenant (Rp)'];
@@ -1385,8 +1477,8 @@
                 const smartPresets = Array.from(
                   new Set(
                     denomSteps
-                      .map((step) => Math.ceil(grandTotal / step) * step)
-                      .filter((amt) => amt >= grandTotal)
+                      .map((step) => Math.ceil(subtotal / step) * step)
+                      .filter((amt) => amt >= subtotal)
                   )
                 ).slice(0, 4);
 
@@ -1397,9 +1489,9 @@
                       <div className="flex flex-wrap gap-1">
                         <button
                           type="button"
-                          onClick={() => setCashReceived(String(grandTotal))}
+                          onClick={() => setCashReceived(String(subtotal))}
                           className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border ${
-                            Number(cashReceived) === grandTotal
+                            Number(cashReceived) === subtotal
                               ? 'bg-teal-600 text-white border-teal-600'
                               : 'bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-transparent'
                           }`}
@@ -1426,35 +1518,22 @@
                       type="number"
                       value={cashReceived}
                       onChange={(e) => setCashReceived(e.target.value)}
-                      placeholder={`Minimal ${grandTotal} (bisa ketik manual)`}
+                      placeholder={`Minimal ${subtotal} (bisa ketik manual)`}
                       className="w-full px-3 py-1.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                     />
-                    {cashReceived !== '' && Number(cashReceived) >= grandTotal && (
+                    {cashReceived !== '' && Number(cashReceived) >= subtotal && (
                       <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex justify-between items-center text-xs font-extrabold text-emerald-700 dark:text-emerald-300">
                         <span>Kembalian Otomatis:</span>
-                        <span>{formatRp(Number(cashReceived) - grandTotal)}</span>
+                        <span>{formatRp(Number(cashReceived) - subtotal)}</span>
                       </div>
                     )}
                   </div>
                 );
               })()}
 
-              {taxConfig?.enabled && cart.length > 0 && (
-                <div className="space-y-1 text-xs border-b border-slate-200 dark:border-slate-800 pb-2">
-                  <div className="flex justify-between text-slate-500">
-                    <span>Subtotal Menu</span>
-                    <span>{formatRp(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-amber-600 font-semibold">
-                    <span>{taxConfig.label || 'Pajak'} ({taxConfig.rate}%)</span>
-                    <span>+{formatRp(taxAmount)}</span>
-                  </div>
-                </div>
-              )}
-
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Total Bayar</span>
-                <span className="text-xl font-extrabold text-slate-900 dark:text-white">{formatRp(grandTotal)}</span>
+                <span className="text-xl font-extrabold text-slate-900 dark:text-white">{formatRp(subtotal)}</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1799,7 +1878,7 @@
                             <Icon name="cart" className="w-4 h-4" />
                             <span>{totalCartQty} Item di Keranjang</span>
                           </div>
-                          <span>{formatRp(grandTotal)} →</span>
+                          <span>{formatRp(subtotal)} →</span>
                         </button>
                       </div>
                     )}
@@ -2431,6 +2510,50 @@
                       )}
                     </div>
 
+                    {pphConfig?.enabled && (
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden p-4 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <h3 className="font-bold text-sm">Rekap Bulanan Pajak Penghasilan ({pphConfig.label})</h3>
+                            <p className="text-[11px] text-slate-500">
+                              Akumulasi penyisihan bulanan untuk jadwal setor {pphConfig.cycle === 'monthly' ? 'Bulanan' : pphConfig.cycle === 'yearly' ? 'Per 1 Tahun' : 'Per 6 Bulan'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[11px] text-slate-500">Belum Disetor</p>
+                            <p className="text-sm font-extrabold text-teal-600 dark:text-teal-400">{formatRp(remainingPphReserve)}</p>
+                          </div>
+                        </div>
+
+                        {monthlyPphBreakdown.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-4">Belum ada data omzet bulanan untuk dihitung PPh-nya.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 text-slate-500">
+                                  <th className="p-2.5 font-bold">Bulan</th>
+                                  <th className="p-2.5 font-bold text-right">Transaksi</th>
+                                  <th className="p-2.5 font-bold text-right">Penghasilan Kopkay</th>
+                                  <th className="p-2.5 font-bold text-right">Penyisihan PPh ({pphConfig.rate}%)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {monthlyPphBreakdown.map((m) => (
+                                  <tr key={m.monthKey}>
+                                    <td className="p-2.5 font-bold">{m.monthLabel}</td>
+                                    <td className="p-2.5 text-right">{m.orderCount} trx</td>
+                                    <td className="p-2.5 text-right">{formatRp(m.basisTotal)}</td>
+                                    <td className="p-2.5 text-right font-extrabold text-amber-600">{formatRp(m.pphEstimated)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="p-4 rounded-2xl border border-teal-200 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 flex flex-wrap items-center justify-between gap-3">
                       <div className="space-y-0.5">
                         <p className="text-xs font-bold text-slate-900 dark:text-white">
@@ -2582,6 +2705,7 @@
                         <option value="Operasional Harian">Operasional Harian</option>
                         <option value="Operasional Bulanan">Operasional Bulanan</option>
                         <option value="Gaji Bulanan">Gaji Bulanan</option>
+                        <option value="Pajak Penghasilan (PPh)">Pajak Penghasilan (PPh)</option>
                       </select>
                       <select
                         value={expenseSource}
@@ -2640,6 +2764,7 @@
                           <option value="Operasional Harian">Operasional Harian</option>
                           <option value="Operasional Bulanan">Operasional Bulanan</option>
                           <option value="Gaji Bulanan">Gaji Bulanan</option>
+                          <option value="Pajak Penghasilan (PPh)">Pajak Penghasilan (PPh)</option>
                         </select>
                       </div>
 
@@ -3197,32 +3322,32 @@
                   <div className="space-y-2.5 pt-2 border-t border-slate-200 dark:border-slate-800">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Pengaturan Pajak Transaksi</p>
-                        <p className="text-[10px] text-slate-400">Otomatis ditambahkan ke keranjang & struk jika aktif</p>
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Pajak Penghasilan Usaha (PPh)</p>
+                        <p className="text-[10px] text-slate-400">Penyisihan omzet bulanan untuk setor per 6 bln / 1 thn (tidak masuk struk pelanggan)</p>
                       </div>
                       <button
                         type="button"
-                        onClick={() => setTaxConfig((prev) => ({ ...prev, enabled: !prev.enabled }))}
-                        className={`px-3 py-1 rounded-full text-[11px] font-bold transition ${
-                          taxConfig?.enabled
+                        onClick={() => setPphConfig((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                        className={`px-3 py-1 rounded-full text-[11px] font-bold transition shrink-0 ${
+                          pphConfig?.enabled
                             ? 'bg-teal-600 text-white'
                             : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                         }`}
                       >
-                        {taxConfig?.enabled ? `Aktif (${taxConfig.rate}%)` : 'Nonaktif (0%)'}
+                        {pphConfig?.enabled ? `Aktif (${pphConfig.rate}%)` : 'Nonaktif'}
                       </button>
                     </div>
 
-                    {taxConfig?.enabled && (
-                      <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2">
+                    {pphConfig?.enabled && (
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-2.5">
                         <div className="grid grid-cols-3 gap-2">
                           <div className="col-span-2">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Nama Pajak</label>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Jenis Pajak</label>
                             <input
                               type="text"
-                              value={taxConfig.label}
-                              onChange={(e) => setTaxConfig((prev) => ({ ...prev, label: e.target.value }))}
-                              placeholder="PB1 / PPN"
+                              value={pphConfig.label}
+                              onChange={(e) => setPphConfig((prev) => ({ ...prev, label: e.target.value }))}
+                              placeholder="PPh Final UMKM (0,5%)"
                               className="w-full px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                             />
                           </div>
@@ -3232,21 +3357,23 @@
                               type="number"
                               min="0"
                               max="100"
-                              step="0.5"
-                              value={taxConfig.rate}
-                              onChange={(e) => setTaxConfig((prev) => ({ ...prev, rate: Number(e.target.value) || 0 }))}
+                              step="0.1"
+                              value={pphConfig.rate}
+                              onChange={(e) => setPphConfig((prev) => ({ ...prev, rate: Number(e.target.value) || 0 }))}
                               className="w-full px-2.5 py-1.5 rounded-lg text-xs font-bold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                             />
                           </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          {[5, 10, 11].map((presetRate) => (
+
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] text-slate-500 mr-1">Tarif Cepat:</span>
+                          {[0.5, 1, 2].map((presetRate) => (
                             <button
                               key={presetRate}
                               type="button"
-                              onClick={() => setTaxConfig((prev) => ({ ...prev, rate: presetRate }))}
+                              onClick={() => setPphConfig((prev) => ({ ...prev, rate: presetRate }))}
                               className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                                Number(taxConfig.rate) === presetRate
+                                Number(pphConfig.rate) === presetRate
                                   ? 'bg-teal-600 text-white border-teal-600'
                                   : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                               }`}
@@ -3254,6 +3381,64 @@
                               {presetRate}%
                             </button>
                           ))}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {[
+                            { id: 'monthly', label: 'Bulanan' },
+                            { id: '6_months', label: 'Per 6 Bulan' },
+                            { id: 'yearly', label: 'Per 1 Tahun' },
+                          ].map((cyc) => (
+                            <button
+                              key={cyc.id}
+                              type="button"
+                              onClick={() => setPphConfig((prev) => ({ ...prev, cycle: cyc.id }))}
+                              className={`py-1 px-2 rounded-lg text-[10px] font-bold border ${
+                                pphConfig.cycle === cyc.id
+                                  ? 'bg-slate-900 text-white border-slate-900 dark:bg-teal-600 dark:border-teal-600'
+                                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              {cyc.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="rounded-lg bg-white dark:bg-slate-900 p-2.5 border border-slate-200 dark:border-slate-700 space-y-1 text-[11px]">
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Dasar Penghasilan Kopkay</span>
+                            <span className="font-bold">{formatRp(pphBaseAmount)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Total Akumulasi PPh ({pphConfig.rate}%)</span>
+                            <span className="font-bold text-amber-600">{formatRp(totalPphAccrued)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-500">Sudah Disetor</span>
+                            <span className="font-bold text-emerald-600">{formatRp(totalPphPaid)}</span>
+                          </div>
+                          <div className="flex justify-between pt-1 border-t border-slate-100 dark:border-slate-800 font-extrabold text-slate-900 dark:text-white">
+                            <span>Sisa Dana Pajak Disisihkan</span>
+                            <span className="text-teal-600 dark:text-teal-400">{formatRp(remainingPphReserve)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={pphPayNote}
+                            onChange={(e) => setPphPayNote(e.target.value)}
+                            placeholder="Ket. setor (misal: Jan-Jun 2026)..."
+                            className="flex-1 px-2.5 py-1.5 rounded-lg text-[11px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                          />
+                          <button
+                            type="button"
+                            disabled={remainingPphReserve <= 0}
+                            onClick={() => handleRecordPphDeposit(remainingPphReserve)}
+                            className="px-2.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white text-[11px] font-bold shrink-0"
+                          >
+                            Catat Setor
+                          </button>
                         </div>
                       </div>
                     )}
@@ -3776,18 +3961,6 @@
                     </div>
 
                     <div className="space-y-1">
-                      {Number(receiptOrder.taxAmount) > 0 && (
-                        <>
-                          <div className="flex justify-between">
-                            <span>Subtotal</span>
-                            <span>{formatRp(receiptOrder.subtotal)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>{receiptOrder.taxLabel || 'Pajak'} ({receiptOrder.taxRate}%)</span>
-                            <span>{formatRp(receiptOrder.taxAmount)}</span>
-                          </div>
-                        </>
-                      )}
                       <div className="flex justify-between font-bold text-sm">
                         <span>TOTAL</span>
                         <span>{formatRp(receiptOrder.total)}</span>
@@ -3904,10 +4077,6 @@
         });
 
         pushText(lineSep);
-        if (Number(order.taxAmount) > 0) {
-          pushText(padLine('Subtotal', formatRp(order.subtotal)) + '\n');
-          pushText(padLine(`${order.taxLabel || 'Pajak'} (${order.taxRate}%)`, formatRp(order.taxAmount)) + '\n');
-        }
         push(0x1b, 0x45, 0x01);
         pushText(padLine('TOTAL', formatRp(order.total)) + '\n');
         push(0x1b, 0x45, 0x00);
