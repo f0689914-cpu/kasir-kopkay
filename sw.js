@@ -1,8 +1,11 @@
-const CACHE_NAME = 'kopkay-pos-v2';
+const CACHE_NAME = 'kopkay-pos-v3';
 const CORE_ASSETS = [
   './',
   './index.html',
-  './manifest.json',
+  './manifest.json'
+];
+
+const OPTIONAL_ASSETS = [
   './icon-192.png',
   './icon-512.png',
   './icon-maskable-512.png'
@@ -10,7 +13,19 @@ const CORE_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      await cache.addAll(CORE_ASSETS);
+      await Promise.all(
+        OPTIONAL_ASSETS.map(async (url) => {
+          try {
+            const resp = await fetch(url);
+            if (resp && resp.ok) {
+              await cache.put(url, resp);
+            }
+          } catch (_) {}
+        })
+      );
+    })
   );
   self.skipWaiting();
 });
@@ -28,6 +43,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith(
     fetch(event.request)
