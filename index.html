@@ -519,6 +519,7 @@
           activeTab,
         ]);
         const [dashboardDetailModal, setDashboardDetailModal] = useState(null);
+        const [selectedClosedShift, setSelectedClosedShift] = useState(null);
 
         const [zoneFilter, setZoneFilter] = useState('All');
         const [selectedTableId, setSelectedTableId] = useState('T01');
@@ -813,6 +814,46 @@
             variance: actualCash - netDrawerCashAfterExpenses,
             totalOrders: orders.length,
             note: closingNoteInput.trim(),
+            tenantSummary: summaryByTenant.map((t) => ({
+              id: t.id,
+              name: t.name,
+              totalQty: t.totalQty,
+              grossSales: t.grossSales,
+              commissionCut: t.commissionCut,
+              netPayout: t.netPayout,
+            })),
+            itemsSold: (() => {
+              const map = new Map();
+              orders.forEach((ord) => {
+                (ord.items || []).forEach((it) => {
+                  const k = `${it.tenantId}__${it.id}__${it.name}`;
+                  const cur = map.get(k);
+                  if (cur) {
+                    cur.qty += it.qty;
+                    cur.grossSales += it.price * it.qty;
+                  } else {
+                    map.set(k, {
+                      id: it.id,
+                      name: it.name,
+                      tenantId: it.tenantId,
+                      tenantName: getTenantName(it.tenantId),
+                      qty: it.qty,
+                      grossSales: it.price * it.qty,
+                    });
+                  }
+                });
+              });
+              return Array.from(map.values()).sort((a, b) => b.qty - a.qty);
+            })(),
+            shiftExpenses: expenses
+              .filter((ex) => !ex.closedAt)
+              .map((ex) => ({
+                id: ex.id,
+                title: ex.title,
+                amount: Number(ex.amount) || 0,
+                category: ex.category,
+                source: ex.source,
+              })),
           };
           setClosedShifts((prev) => [closingRecord, ...prev]);
           setOrders((prev) => prev.filter((o) => activeShfId && o.shiftId && o.shiftId !== activeShfId));
@@ -2621,15 +2662,20 @@
 
                     {closedShifts.length > 0 && (
                       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-2.5">
-                        <h3 className="font-bold text-sm">Riwayat Closing Shift</h3>
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-bold text-sm">Riwayat Closing Shift</h3>
+                          <span className="text-[11px] text-slate-400">Klik kartu untuk lihat rincian</span>
+                        </div>
                         <div className="space-y-2">
                           {closedShifts.slice(0, 10).map((cs) => (
-                            <div
+                            <button
                               key={cs.id}
-                              className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                              type="button"
+                              onClick={() => setSelectedClosedShift(cs)}
+                              className="w-full text-left p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-teal-500 dark:hover:border-teal-500 bg-slate-50/40 dark:bg-slate-950/30 transition text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                             >
                               <div>
-                                <p className="font-bold">
+                                <p className="font-bold text-slate-900 dark:text-white">
                                   {cs.id} • {cs.cashierName} ({cs.totalOrders} trx)
                                 </p>
                                 <p className="text-[11px] text-slate-400">
@@ -2637,14 +2683,141 @@
                                   {cs.note ? ` • ${cs.note}` : ''}
                                 </p>
                               </div>
-                              <div className="text-left sm:text-right">
-                                <p className="font-extrabold text-teal-600 dark:text-teal-400">Omzet {formatRp(cs.grossSales)}</p>
-                                <p className="text-[11px] text-slate-500">
-                                  Kas Fisik: {formatRp(cs.actualCash)} ({cs.variance === 0 ? 'Pas' : cs.variance > 0 ? `+${formatRp(cs.variance)}` : formatRp(cs.variance)})
-                                </p>
+                              <div className="flex items-center justify-between sm:justify-end gap-3">
+                                <div className="text-left sm:text-right">
+                                  <p className="font-extrabold text-teal-600 dark:text-teal-400">Omzet {formatRp(cs.grossSales)}</p>
+                                  <p className="text-[11px] text-slate-500">
+                                    Kas Fisik: {formatRp(cs.actualCash)} ({cs.variance === 0 ? 'Pas' : cs.variance > 0 ? `+${formatRp(cs.variance)}` : formatRp(cs.variance)})
+                                  </p>
+                                </div>
+                                <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 shrink-0">
+                                  Rincian →
+                                </span>
                               </div>
-                            </div>
+                            </button>
                           ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedClosedShift && (
+                      <div
+                        onClick={() => setSelectedClosedShift(null)}
+                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+                      >
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[85vh] flex flex-col"
+                        >
+                          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800">
+                            <div>
+                              <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                                Rincian {selectedClosedShift.id} • {selectedClosedShift.cashierName}
+                              </h3>
+                              <p className="text-[11px] text-slate-500">
+                                Ditutup {new Date(selectedClosedShift.closedAt).toLocaleString('id-ID')} • {selectedClosedShift.totalOrders} transaksi
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedClosedShift(null)}
+                              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"
+                            >
+                              <Icon name="x" className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto space-y-3 text-xs pr-0.5">
+                            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Modal Awal</span>
+                                <span className="font-bold">{formatRp(selectedClosedShift.openingCash)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Omzet Kotor Shift</span>
+                                <span className="font-bold">{formatRp(selectedClosedShift.grossSales)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Tunai / QRIS</span>
+                                <span className="font-semibold">
+                                  {formatRp(selectedClosedShift.cashSales)} / {formatRp(selectedClosedShift.qrisSales)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Komisi Tenant (10%)</span>
+                                <span className="font-bold text-amber-600">{formatRp(selectedClosedShift.commissionCut)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Pengeluaran Shift</span>
+                                <span className="font-bold text-rose-600">-{formatRp(selectedClosedShift.expenseTotal || 0)}</span>
+                              </div>
+                              <div className="flex justify-between pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                                <span className="text-slate-500">Ekspektasi Laci Tunai</span>
+                                <span className="font-bold">{formatRp(selectedClosedShift.expectedDrawerCash)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Kas Fisik Terhitung</span>
+                                <span className="font-extrabold text-teal-600 dark:text-teal-400">{formatRp(selectedClosedShift.actualCash)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Selisih Kas</span>
+                                <span className="font-bold">
+                                  {selectedClosedShift.variance === 0
+                                    ? 'Pas (Rp 0)'
+                                    : selectedClosedShift.variance > 0
+                                    ? `+${formatRp(selectedClosedShift.variance)}`
+                                    : formatRp(selectedClosedShift.variance)}
+                                </span>
+                              </div>
+                              {selectedClosedShift.note && (
+                                <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-200 dark:border-slate-700">
+                                  Catatan: {selectedClosedShift.note}
+                                </p>
+                              )}
+                            </div>
+
+                            {Array.isArray(selectedClosedShift.tenantSummary) && selectedClosedShift.tenantSummary.length > 0 && (
+                              <div className="space-y-1.5">
+                                <p className="font-bold text-slate-700 dark:text-slate-200">Rekap per Tenant</p>
+                                <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
+                                  {selectedClosedShift.tenantSummary.map((ts) => (
+                                    <div key={ts.id} className="py-2 flex items-center justify-between gap-2">
+                                      <div>
+                                        <p className="font-bold">{ts.name}</p>
+                                        <p className="text-[11px] text-slate-400">{ts.totalQty} item • Komisi {formatRp(ts.commissionCut)}</p>
+                                      </div>
+                                      <span className="font-extrabold text-emerald-600">{formatRp(ts.netPayout)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {Array.isArray(selectedClosedShift.itemsSold) && selectedClosedShift.itemsSold.length > 0 && (
+                              <div className="space-y-1.5">
+                                <p className="font-bold text-slate-700 dark:text-slate-200">Produk Terjual di Shift Ini</p>
+                                <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
+                                  {selectedClosedShift.itemsSold.map((it) => (
+                                    <div key={`${it.tenantId}-${it.id}`} className="py-1.5 flex items-center justify-between gap-2">
+                                      <div>
+                                        <span className="font-bold">{it.qty}x</span> {it.name}{' '}
+                                        <span className="text-[11px] text-slate-400">({it.tenantName})</span>
+                                      </div>
+                                      <span className="font-semibold">{formatRp(it.grossSales)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedClosedShift(null)}
+                            className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                          >
+                            Tutup Rincian
+                          </button>
                         </div>
                       </div>
                     )}
