@@ -4,8 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#0d9488" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KASIR KOPKAY" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png" />
     <title>KASIR KOPKAY - POS Multi-Tenant Kopitiam Kopi & Kaya</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -69,6 +74,16 @@
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-teal-500 selection:text-white">
     <div id="root"></div>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch((err) => {
+            console.warn('SW registration failed:', err);
+          });
+        });
+      }
+    </script>
 
     <script type="text/babel">
       const { useState, useEffect, useMemo, useRef } = React;
@@ -198,26 +213,6 @@
               <path d="M2 7h20" />
             </>
           ),
-          users: (
-            <>
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </>
-          ),
-          clock: (
-            <>
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </>
-          ),
-          arrowRight: (
-            <>
-              <path d="M5 12h14" />
-              <path d="m12 5 7 7-7 7" />
-            </>
-          ),
           download: (
             <>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -225,11 +220,10 @@
               <line x1="12" x2="12" y1="15" y2="3" />
             </>
           ),
-          upload: (
+          smartphone: (
             <>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" x2="12" y1="3" y2="15" />
+              <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+              <path d="M12 18h.01" />
             </>
           ),
           alert: (
@@ -391,6 +385,9 @@
         const [tables, setTables] = useState(() => loadStorage('kopkay_tables_v1', INITIAL_TABLES));
         const [orders, setOrders] = useState(() => loadStorage('kopkay_orders_v1', []));
 
+        // PWA Install Prompt state
+        const [installPromptEvent, setInstallPromptEvent] = useState(null);
+
         // Filter & Cart states
         const [selectedTenant, setSelectedTenant] = useState('all');
         const [selectedCategory, setSelectedCategory] = useState('All');
@@ -422,6 +419,29 @@
         const [newMenuTenant, setNewMenuTenant] = useState('kopkay');
         const [newMenuCat, setNewMenuCat] = useState('Makanan Utama');
         const fileInputRef = useRef(null);
+
+        useEffect(() => {
+          const handleBeforeInstall = (e) => {
+            e.preventDefault();
+            setInstallPromptEvent(e);
+          };
+          const handleAppInstalled = () => {
+            setInstallPromptEvent(null);
+          };
+          window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+          window.addEventListener('appinstalled', handleAppInstalled);
+          return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+            window.removeEventListener('appinstalled', handleAppInstalled);
+          };
+        }, []);
+
+        const triggerInstall = async () => {
+          if (!installPromptEvent) return;
+          installPromptEvent.prompt();
+          const { outcome } = await installPromptEvent.userChoice;
+          if (outcome === 'accepted') setInstallPromptEvent(null);
+        };
 
         useEffect(() => {
           localStorage.setItem('kopkay_dark_v1', JSON.stringify(darkMode));
@@ -856,7 +876,16 @@
                   ))}
                 </nav>
               </div>
-              <div className="p-3 border-t border-slate-200 dark:border-slate-800">
+              <div className="p-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                {installPromptEvent && (
+                  <button
+                    onClick={triggerInstall}
+                    className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <Icon name="smartphone" className="w-4 h-4" />
+                    <span>Instal Aplikasi POS</span>
+                  </button>
+                )}
                 <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-500 dark:text-slate-400">
                   <p className="font-semibold text-slate-700 dark:text-slate-200">Aturan Bagi Hasil</p>
                   <p className="mt-1">Kopkay: 100% Toko</p>
@@ -892,6 +921,16 @@
                 </div>
 
                 <div className="flex items-center gap-1.5 lg:gap-2.5 shrink-0">
+                  {installPromptEvent && (
+                    <button
+                      onClick={triggerInstall}
+                      className="px-2.5 py-1.5 rounded-xl bg-teal-600 text-white text-[11px] lg:text-xs font-bold flex items-center gap-1 shadow-sm animate-pulse"
+                    >
+                      <Icon name="smartphone" className="w-3.5 h-3.5" />
+                      <span>Instal App</span>
+                    </button>
+                  )}
+
                   <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     Live
