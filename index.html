@@ -253,7 +253,7 @@
 
       const INITIAL_TENANTS = [
         { id: 'kopkay', name: 'Kopitiam Kopi & Kaya', ownerType: 'internal', commissionRate: 0 },
-        { id: 'kamie', name: 'Kamie Hainan', ownerType: 'internal', commissionRate: 0 },
+        { id: 'kamie', name: 'Kamie Hainan', ownerType: 'tenant', commissionRate: 0 },
         { id: 'lontong-soto', name: 'Lontong & Soto', ownerType: 'tenant', commissionRate: 0.1 },
         { id: 'joice', name: 'Joice', ownerType: 'tenant', commissionRate: 0.1 },
       ];
@@ -1003,14 +1003,14 @@
 
         const kopkayIncome =
           summaryByTenant
-            .filter((t) => t.ownerType === 'internal')
+            .filter((t) => t.id === 'kopkay')
             .reduce((sum, t) => sum + t.grossSales, 0) + shiftTotals.commission;
 
         const exportCSV = () => {
           const headers = ['Nama Tenant', 'Skema', 'Item Terjual', 'Omzet Kotor (Rp)', 'Potongan 10% (Rp)', 'Hak Bersih Tenant (Rp)'];
           const rows = summaryByTenant.map((t) => [
             `"${t.name}"`,
-            t.ownerType === 'internal' ? 'Utama (0%)' : 'Mitra (10%)',
+            t.id === 'kopkay' ? 'Utama (0%)' : `Tenant (${Math.round((t.commissionRate || 0) * 100)}%)`,
             t.totalQty,
             t.grossSales,
             t.commissionCut,
@@ -2890,8 +2890,9 @@
 
                   <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
                     <p className="font-bold text-slate-800 dark:text-white">Aturan Bagi Hasil Tenant</p>
-                    <p>• Kopitiam Kopi & Kaya & Kamie Hainan: 100% pendapatan toko (0% potongan)</p>
-                    <p>• Tenant Mitra (Lontong & Soto, Joice): potongan otomatis 10% dari omzet kotor</p>
+                    <p>• Kopitiam Kopi & Kaya: omzet menu utama masuk ke Kopkay (0% potongan)</p>
+                    <p>• Kamie Hainan: tetap dihitung sebagai tenant (0% potongan, tidak masuk ke pendapatan bersih Kopkay)</p>
+                    <p>• Tenant mitra lainnya (Lontong & Soto, Joice): potongan otomatis 10% dari omzet kotor</p>
                   </div>
 
                   <button
