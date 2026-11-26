@@ -402,6 +402,7 @@
         const [errorMsg, setErrorMsg] = useState('');
         const [receiptOrder, setReceiptOrder] = useState(null);
         const [mobileCartOpen, setMobileCartOpen] = useState(false);
+        const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
 
         // Table states
         const [zoneFilter, setZoneFilter] = useState('All');
@@ -899,9 +900,14 @@
               {/* Top Header */}
               <header className="h-14 lg:h-16 px-3 lg:px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2 lg:hidden shrink-0">
-                  <div className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setSettingsDrawerOpen(true)}
+                    aria-label="Buka menu pengaturan dan backup data"
+                    className="w-8 h-8 rounded-lg bg-teal-600 hover:bg-teal-700 active:scale-95 text-white flex items-center justify-center shadow-sm transition"
+                  >
                     <Icon name="coffee" className="w-4 h-4" />
-                  </div>
+                  </button>
                 </div>
 
                 <div className="relative flex-1 max-w-md">
@@ -1642,6 +1648,129 @@
                 )}
               </main>
             </div>
+
+            {/* Pengaturan & Backup Data Drawer Modal */}
+            {settingsDrawerOpen && (
+              <div
+                onClick={() => setSettingsDrawerOpen(false)}
+                className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[90vh] overflow-y-auto"
+                >
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center">
+                        <Icon name="coffee" className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-slate-900 dark:text-white">Pengaturan & Backup Data</h3>
+                        <p className="text-[11px] text-slate-500">KASIR KOPKAY • Kopitiam Kopi & Kaya</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsDrawerOpen(false)}
+                      className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"
+                    >
+                      <Icon name="x" className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Mode Role & Tampilan */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Mode Akses & Tampilan</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['Cashier', 'Admin'].map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setRole(r)}
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border ${
+                            role === r
+                              ? 'bg-teal-600 text-white border-teal-600'
+                              : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          Mode {r}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDarkMode(!darkMode)}
+                      className="w-full py-2 px-3 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-between"
+                    >
+                      <span>Tema Layar</span>
+                      <span className="flex items-center gap-1.5 font-bold text-teal-600 dark:text-teal-400">
+                        <Icon name={darkMode ? 'sun' : 'moon'} className="w-4 h-4" />
+                        {darkMode ? 'Mode Terang' : 'Mode Gelap'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Instal Aplikasi PWA jika tersedia */}
+                  {installPromptEvent && (
+                    <button
+                      type="button"
+                      onClick={triggerInstall}
+                      className="w-full py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <Icon name="smartphone" className="w-4 h-4" />
+                      <span>Instal Aplikasi ke Layar Utama</span>
+                    </button>
+                  )}
+
+                  {/* Backup & Restore Data */}
+                  <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Backup & Restore Transaksi</p>
+                      <span className="text-[11px] font-semibold text-slate-400">{orders.length} transaksi tersimpan</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={exportCSV}
+                        className="py-2 px-2 rounded-xl bg-teal-600 text-white text-xs font-bold flex items-center justify-center gap-1"
+                      >
+                        <Icon name="download" className="w-3.5 h-3.5" />
+                        <span>CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportJSON}
+                        className="py-2 px-2 rounded-xl bg-slate-800 text-white text-xs font-bold"
+                      >
+                        Backup JSON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="py-2 px-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold"
+                      >
+                        Restore
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Ringkasan Aturan Komisi */}
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                    <p className="font-bold text-slate-800 dark:text-white">Aturan Bagi Hasil Tenant</p>
+                    <p>• Kopitiam Kopi & Kaya: 100% pendapatan toko</p>
+                    <p>• Tenant Mitra (Kamie Hainan, Lontong & Soto, Joice): potongan otomatis 10% dari omzet kotor</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSettingsDrawerOpen(false)}
+                    className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                  >
+                    Tutup Menu
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Thermal Receipt Modal */}
             {receiptOrder && (
