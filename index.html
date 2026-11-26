@@ -432,6 +432,91 @@
         const [receiptOrder, setReceiptOrder] = useState(null);
         const [mobileCartOpen, setMobileCartOpen] = useState(false);
         const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+        const isProgrammaticPopRef = useRef(false);
+        const isAnyOverlayOpen = Boolean(
+          settingsDrawerOpen ||
+            dashboardDetailModal ||
+            billDrawerOpen ||
+            shiftModalMode ||
+            pinModalOpen ||
+            receiptOrder ||
+            mobileCartOpen
+        );
+        const prevOverlayOpenRef = useRef(false);
+
+        useEffect(() => {
+          const wasOpen = prevOverlayOpenRef.current;
+          prevOverlayOpenRef.current = isAnyOverlayOpen;
+
+          if (!wasOpen && isAnyOverlayOpen) {
+            try {
+              window.history.pushState({ kopkayOverlay: true }, '', window.location.href);
+            } catch (e) {}
+          } else if (wasOpen && !isAnyOverlayOpen) {
+            if (isProgrammaticPopRef.current) {
+              isProgrammaticPopRef.current = false;
+            } else if (window.history.state && window.history.state.kopkayOverlay) {
+              isProgrammaticPopRef.current = true;
+              window.history.back();
+            }
+          }
+        }, [isAnyOverlayOpen]);
+
+        useEffect(() => {
+          const onPopState = () => {
+            if (isProgrammaticPopRef.current) {
+              isProgrammaticPopRef.current = false;
+              return;
+            }
+
+            if (receiptOrder) {
+              setBtStatusMsg('');
+              setReceiptOrder(null);
+              return;
+            }
+            if (pinModalOpen) {
+              setPinModalOpen(false);
+              setPinInput('');
+              setPinError('');
+              return;
+            }
+            if (shiftModalMode) {
+              setShiftModalMode(null);
+              return;
+            }
+            if (billDrawerOpen) {
+              setBillDrawerOpen(false);
+              return;
+            }
+            if (dashboardDetailModal) {
+              setDashboardDetailModal(null);
+              return;
+            }
+            if (settingsDrawerOpen) {
+              setSettingsDrawerOpen(false);
+              return;
+            }
+            if (mobileCartOpen) {
+              setMobileCartOpen(false);
+              return;
+            }
+            if (activeTab !== 'order') {
+              setActiveTab('order');
+            }
+          };
+
+          window.addEventListener('popstate', onPopState);
+          return () => window.removeEventListener('popstate', onPopState);
+        }, [
+          receiptOrder,
+          pinModalOpen,
+          shiftModalMode,
+          billDrawerOpen,
+          dashboardDetailModal,
+          settingsDrawerOpen,
+          mobileCartOpen,
+          activeTab,
+        ]);
         const [dashboardDetailModal, setDashboardDetailModal] = useState(null);
 
         const [zoneFilter, setZoneFilter] = useState('All');
