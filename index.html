@@ -383,7 +383,7 @@
         const [pinModalOpen, setPinModalOpen] = useState(false);
         const [pinInput, setPinInput] = useState('');
         const [pinError, setPinError] = useState('');
-        const [pendingAdminAction, setPendingAdminAction] = useState(null); // { type: 'switch_role' | 'open_menu_admin' }
+        const [pendingAdminAction, setPendingAdminAction] = useState(null);
         const [newPinValue, setNewPinValue] = useState('');
         const [pinSavedNotice, setPinSavedNotice] = useState('');
         const [btDeviceName, setBtDeviceName] = useState('');
@@ -409,17 +409,15 @@
           })
         );
         const [closedShifts, setClosedShifts] = useState(() => loadStorage('kopkay_closed_shifts_v1', []));
-        const [shiftModalMode, setShiftModalMode] = useState(null); // 'open' | 'closing' | null
+        const [shiftModalMode, setShiftModalMode] = useState(null);
         const [openCashInput, setOpenCashInput] = useState('');
         const [openCashierInput, setOpenCashierInput] = useState('');
         const [openShiftNoteInput, setOpenShiftNoteInput] = useState('');
         const [closingActualCashInput, setClosingActualCashInput] = useState('');
         const [closingNoteInput, setClosingNoteInput] = useState('');
 
-        // PWA Install Prompt state
         const [installPromptEvent, setInstallPromptEvent] = useState(null);
 
-        // Filter & Cart states
         const [selectedTenant, setSelectedTenant] = useState('all');
         const [selectedCategory, setSelectedCategory] = useState('All');
         const [searchQuery, setSearchQuery] = useState('');
@@ -435,17 +433,14 @@
         const [mobileCartOpen, setMobileCartOpen] = useState(false);
         const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
 
-        // Table states
         const [zoneFilter, setZoneFilter] = useState('All');
         const [selectedTableId, setSelectedTableId] = useState('T01');
         const [newTableName, setNewTableName] = useState('');
         const [newTableZone, setNewTableZone] = useState('Indoor');
         const [newTableCap, setNewTableCap] = useState(4);
 
-        // Kitchen clock
         const [now, setNow] = useState(Date.now());
 
-        // Admin new menu form
         const [newMenuName, setNewMenuName] = useState('');
         const [newMenuPrice, setNewMenuPrice] = useState('');
         const [newMenuTenant, setNewMenuTenant] = useState('kopkay');
@@ -461,7 +456,7 @@
         const [editMenuTenant, setEditMenuTenant] = useState('kopkay');
         const [editMenuCat, setEditMenuCat] = useState('Makanan Utama');
         const fileInputRef = useRef(null);
-        const [reportPeriod, setReportPeriod] = useState('all'); // 'today', 'yesterday', '7d', '30d', 'all'
+        const [reportPeriod, setReportPeriod] = useState('all');
         const [reportTenantFilter, setReportTenantFilter] = useState('all');
         const [reportProductSearch, setReportProductSearch] = useState('');
 
@@ -585,7 +580,7 @@
         const [expenseCategory, setExpenseCategory] = useState('Belanja Bahan');
         const [expenseSource, setExpenseSource] = useState('Kas Tunai');
         const [expenseNote, setExpenseNote] = useState('');
-        const [expensePeriod, setExpensePeriod] = useState('all'); // 'today', '7d', '30d', 'all'
+        const [expensePeriod, setExpensePeriod] = useState('all');
         const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
 
         useEffect(() => {
@@ -644,8 +639,7 @@
 
         const cashExpensesFromDrawer = useMemo(
           () =>
-            orders
-              .length >= 0
+            orders.length >= 0
               ? expenses
                   .filter((ex) => ex.source === 'Kas Tunai')
                   .reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0)
@@ -762,20 +756,22 @@
             return;
           }
 
-          const tenantBreakdown = tenants.map((tenant) => {
-            const tItems = cart.filter((i) => i.tenantId === tenant.id);
-            const grossSales = tItems.reduce((sum, i) => sum + i.price * i.qty, 0);
-            const commissionCut = Math.round(grossSales * tenant.commissionRate);
-            return {
-              tenantId: tenant.id,
-              tenantName: tenant.name,
-              ownerType: tenant.ownerType,
-              commissionRate: tenant.commissionRate,
-              grossSales,
-              commissionCut,
-              netTenantPayout: grossSales - commissionCut,
-            };
-          }).filter((t) => t.grossSales > 0);
+          const tenantBreakdown = tenants
+            .map((tenant) => {
+              const tItems = cart.filter((i) => i.tenantId === tenant.id);
+              const grossSales = tItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+              const commissionCut = Math.round(grossSales * tenant.commissionRate);
+              return {
+                tenantId: tenant.id,
+                tenantName: tenant.name,
+                ownerType: tenant.ownerType,
+                commissionRate: tenant.commissionRate,
+                grossSales,
+                commissionCut,
+                netTenantPayout: grossSales - commissionCut,
+              };
+            })
+            .filter((t) => t.grossSales > 0);
 
           const newOrder = {
             id: 'ORD-' + String(Date.now()).slice(-6),
@@ -897,7 +893,6 @@
           }
         };
 
-        // Period filter helper (using local date YYYY-MM-DD)
         const getLocalDateKey = (isoOrDate) => {
           const d = new Date(isoOrDate);
           const y = d.getFullYear();
@@ -925,7 +920,6 @@
           return orders.filter((o) => new Date(o.createdAt).getTime() >= cutoff);
         }, [orders, reportPeriod]);
 
-        // Product sales breakdown per tenant
         const productSalesByTenant = useMemo(() => {
           const map = new Map();
           filteredReportOrders.forEach((order) => {
@@ -974,7 +968,6 @@
             .sort((a, b) => b.qty - a.qty || b.grossSales - a.grossSales);
         }, [filteredReportOrders, reportTenantFilter, reportProductSearch]);
 
-        // Summary calculations
         const summaryByTenant = useMemo(() => {
           return tenants.map((tenant) => {
             let grossSales = 0;
@@ -996,7 +989,7 @@
               netPayout: grossSales - commissionCut,
             };
           });
-        }, [filteredReportOrders]);
+        }, [filteredReportOrders, tenants]);
 
         const shiftTotals = summaryByTenant.reduce(
           (acc, cur) => ({
@@ -1927,7 +1920,6 @@
                       </div>
                     </div>
 
-                    {/* Filter Periode Cepat ala Dashboard */}
                     <div className="flex flex-wrap items-center gap-1.5">
                       {[
                         { id: 'all', label: 'Semua Shift' },
@@ -1953,7 +1945,6 @@
                       </span>
                     </div>
 
-                    {/* Ringkasan Rekap per Tenant */}
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
                       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                         <h3 className="font-bold text-sm">Rekap Bagi Hasil per Tenant</h3>
@@ -1992,7 +1983,6 @@
                       </table>
                     </div>
 
-                    {/* Penjualan per Produk per Tenant */}
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden space-y-3 p-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div>
@@ -2157,8 +2147,7 @@
                             `"${ex.note || ''}"`,
                           ]);
                           rows.push(['"TOTAL"', '""', '""', '""', visibleExpenses.reduce((s, x) => s + (x.amount || 0), 0), '""']);
-                          const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('
-');
+                          const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
                           const link = document.createElement('a');
                           link.setAttribute('href', encodeURI(csv));
                           link.setAttribute('download', `pengeluaran-kopkay-${new Date().toISOString().slice(0, 10)}.csv`);
@@ -2325,7 +2314,6 @@
 
                 {activeTab === 'menu-admin' && role === 'Admin' && (
                   <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
-                    {/* Kelola Tenant / Stand */}
                     <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
@@ -2496,7 +2484,6 @@
                       </div>
                     </div>
 
-                    {/* Pengaturan PIN Admin (Selalu Bisa Diedit Kapan Saja) */}
                     <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <div>
@@ -2783,7 +2770,6 @@
                     </button>
                   </div>
 
-                  {/* Mode Role & Tampilan */}
                   <div className="space-y-2">
                     <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Mode Akses & Tampilan</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -2823,7 +2809,6 @@
                     </button>
                   </div>
 
-                  {/* Instal Aplikasi PWA jika tersedia */}
                   {installPromptEvent && (
                     <button
                       type="button"
@@ -2835,7 +2820,6 @@
                     </button>
                   )}
 
-                  {/* Manajemen Shift: Open Shift & Closing Shift */}
                   <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Manajemen Shift Kasir</p>
@@ -2882,7 +2866,6 @@
                     </div>
                   </div>
 
-                  {/* Backup & Restore Data */}
                   <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                     <div className="flex items-center justify-between">
                       <p className="text-xs font-bold text-slate-600 dark:text-slate-300">Backup & Restore Transaksi</p>
@@ -2914,7 +2897,6 @@
                     </div>
                   </div>
 
-                  {/* Ringkasan Aturan Komisi */}
                   <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
                     <p className="font-bold text-slate-800 dark:text-white">Aturan Bagi Hasil Tenant</p>
                     <p>• Kopitiam Kopi & Kaya & Kamie Hainan: 100% pendapatan toko (0% potongan)</p>
@@ -3193,7 +3175,7 @@
               </div>
             )}
 
-            {/* PIN Admin Modal (Wajib Setiap Klik Tombol Admin) */}
+            {/* PIN Admin Modal */}
             {pinModalOpen && (
               <div
                 onClick={() => {
@@ -3370,17 +3352,13 @@
         );
       }
 
-
-      // ESC/POS helper for 58mm Bluetooth thermal printer (Web Bluetooth API)
       const encodeEscPosReceipt = (order, getTenantLabel) => {
         const encoder = new TextEncoder();
         const bytes = [];
         const push = (...arr) => bytes.push(...arr);
         const pushText = (str) => push(...encoder.encode(str));
 
-        // Initialize printer: ESC @
         push(0x1b, 0x40);
-        // Select code page PC858 / standard ASCII-safe
         push(0x1b, 0x74, 0x00);
 
         const padLine = (left, right, width = 32) => {
@@ -3392,17 +3370,15 @@
 
         const lineSep = '-'.repeat(32) + '\n';
 
-        // Center + Bold + Double height title
-        push(0x1b, 0x61, 0x01); // center
-        push(0x1b, 0x45, 0x01); // bold on
-        push(0x1d, 0x21, 0x11); // double width/height
+        push(0x1b, 0x61, 0x01);
+        push(0x1b, 0x45, 0x01);
+        push(0x1d, 0x21, 0x11);
         pushText('KOPKAY POS\n');
-        push(0x1d, 0x21, 0x00); // normal size
+        push(0x1d, 0x21, 0x00);
         pushText('KOPITIAM KOPI & KAYA\n');
-        push(0x1b, 0x45, 0x00); // bold off
+        push(0x1b, 0x45, 0x00);
         pushText('Pekanbaru, Riau\n');
 
-        // Left align meta
         push(0x1b, 0x61, 0x00);
         pushText(lineSep);
         const timeStr = new Date(order.createdAt).toLocaleString('id-ID', {
@@ -3418,7 +3394,6 @@
         pushText(`Plg  : ${order.customerName}\n`);
         pushText(lineSep);
 
-        // Items
         (order.items || []).forEach((item) => {
           pushText(`${item.qty}x ${item.name}\n`);
           const subStr = formatRp(item.price * item.qty);
@@ -3443,7 +3418,6 @@
         push(0x1b, 0x61, 0x01);
         pushText('\nTerima kasih telah berkunjung!\n\n\n');
 
-        // Feed & partial cut (0x1d, 0x56, 0x42, 0x00)
         push(0x1d, 0x56, 0x42, 0x00);
         return new Uint8Array(bytes);
       };
