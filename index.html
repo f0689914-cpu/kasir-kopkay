@@ -1,0 +1,1701 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#0d9488" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>KASIR KOPKAY - POS Multi-Tenant Kopitiam Kopi & Kaya</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+            },
+          },
+        },
+      };
+    </script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        #thermal-receipt-area,
+        #thermal-receipt-area * {
+          visibility: visible;
+        }
+        #thermal-receipt-area {
+          position: fixed;
+          left: 0;
+          top: 0;
+          width: 58mm;
+          padding: 4mm;
+          background: #ffffff !important;
+          color: #000000 !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+      }
+      ::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.35);
+        border-radius: 9999px;
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    </style>
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-teal-500 selection:text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useMemo, useRef } = React;
+
+      // Crisp inline SVG Icons
+      const Icon = ({ name, className = 'w-4 h-4' }) => {
+        const icons = {
+          coffee: (
+            <>
+              <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
+              <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
+              <line x1="6" x2="6" y1="2" y2="4" />
+              <line x1="10" x2="10" y1="2" y2="4" />
+              <line x1="14" x2="14" y1="2" y2="4" />
+            </>
+          ),
+          cart: (
+            <>
+              <circle cx="8" cy="21" r="1" />
+              <circle cx="19" cy="21" r="1" />
+              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+            </>
+          ),
+          grid: (
+            <>
+              <rect width="7" height="7" x="3" y="3" rx="1" />
+              <rect width="7" height="7" x="14" y="3" rx="1" />
+              <rect width="7" height="7" x="14" y="14" rx="1" />
+              <rect width="7" height="7" x="3" y="14" rx="1" />
+            </>
+          ),
+          chef: (
+            <>
+              <path d="M6 13.87A4 4 0 0 1 7.41 6a5.11 5.11 0 0 1 1.05-1.54 5 5 0 0 1 7.08 0A5.11 5.11 0 0 1 16.59 6 4 4 0 0 1 18 13.87V21H6Z" />
+              <line x1="6" x2="18" y1="17" y2="17" />
+            </>
+          ),
+          dashboard: (
+            <>
+              <rect width="7" height="9" x="3" y="3" rx="1" />
+              <rect width="7" height="5" x="14" y="3" rx="1" />
+              <rect width="7" height="9" x="14" y="12" rx="1" />
+              <rect width="7" height="5" x="3" y="16" rx="1" />
+            </>
+          ),
+          report: (
+            <>
+              <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+              <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+              <path d="M8 13h2" />
+              <path d="M14 13h2" />
+              <path d="M8 17h2" />
+              <path d="M14 17h2" />
+            </>
+          ),
+          sliders: (
+            <>
+              <line x1="21" x2="14" y1="4" y2="4" />
+              <line x1="10" x2="3" y1="4" y2="4" />
+              <line x1="21" x2="12" y1="12" y2="12" />
+              <line x1="8" x2="3" y1="12" y2="12" />
+              <line x1="21" x2="16" y1="20" y2="20" />
+              <line x1="12" x2="3" y1="20" y2="20" />
+              <line x1="14" x2="14" y1="2" y2="6" />
+              <line x1="8" x2="8" y1="10" y2="14" />
+              <line x1="16" x2="16" y1="18" y2="22" />
+            </>
+          ),
+          search: (
+            <>
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </>
+          ),
+          sun: (
+            <>
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </>
+          ),
+          moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+          plus: (
+            <>
+              <path d="M5 12h14" />
+              <path d="M12 5v14" />
+            </>
+          ),
+          minus: <path d="M5 12h14" />,
+          trash: (
+            <>
+              <path d="M3 6h18" />
+              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+            </>
+          ),
+          printer: (
+            <>
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect width="12" height="8" x="6" y="14" />
+            </>
+          ),
+          check: (
+            <>
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </>
+          ),
+          x: (
+            <>
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </>
+          ),
+          store: (
+            <>
+              <path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7" />
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+              <path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4" />
+              <path d="M2 7h20" />
+            </>
+          ),
+          users: (
+            <>
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </>
+          ),
+          clock: (
+            <>
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </>
+          ),
+          arrowRight: (
+            <>
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </>
+          ),
+          download: (
+            <>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" x2="12" y1="15" y2="3" />
+            </>
+          ),
+          upload: (
+            <>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" x2="12" y1="3" y2="15" />
+            </>
+          ),
+          alert: (
+            <>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" x2="12" y1="8" y2="12" />
+              <line x1="12" x2="12.01" y1="16" y2="16" />
+            </>
+          ),
+        };
+
+        return (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={className}
+          >
+            {icons[name] || null}
+          </svg>
+        );
+      };
+
+      const TENANTS = [
+        { id: 'kopkay', name: 'Kopitiam Kopi & Kaya', ownerType: 'internal', commissionRate: 0 },
+        { id: 'kamie', name: 'Kamie Hainan', ownerType: 'tenant', commissionRate: 0.1 },
+        { id: 'lontong-soto', name: 'Lontong & Soto', ownerType: 'tenant', commissionRate: 0.1 },
+        { id: 'joice', name: 'Joice', ownerType: 'tenant', commissionRate: 0.1 },
+      ];
+
+      const INITIAL_MENU_ITEMS = [
+        // KOPITIAM KOPI & KAYA - MAKANAN UTAMA
+        { id: 'kk-01', name: 'Buttermilk Chicken', price: 35000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Ayam goreng renyah dengan saus creamy gurih khas buttermilk dan sentuhan pedas ringan' },
+        { id: 'kk-02', name: 'Nasi Ayam Mentega', price: 35000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Potongan ayam dimasak dengan bawang bombay, kecap asin, dan saus spesial mentega' },
+        { id: 'kk-03', name: 'Nasi Ayam Sambal Bawang', price: 35000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Ayam gurih dengan nasi hangat berpadu sambal bawang pedas nikmat' },
+        { id: 'kk-04', name: 'Nasi Ayam Cabe Garam', price: 35000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Ayam crispy gurih dengan taburan cabai dan bawang yang wangi' },
+        { id: 'kk-05', name: 'Nasi Telur Pontianak', price: 20000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Nasi putih dan telur goreng dengan siraman saus gurih kecap, bawang putih, dan daun bawang' },
+        { id: 'kk-06', name: 'Chicken Creamy Mushroom', price: 35000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Ayam crispy gurih disajikan dengan saus jamur creamy' },
+        { id: 'kk-07', name: 'Nasi Goreng Kampung', price: 28000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Nasi goreng kampung gurih pedas dari cabai dan terasi dengan potongan ayam dan sayur' },
+        { id: 'kk-08', name: 'Mie Goreng', price: 28000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Mie kuning goreng kenyal berbumbu gurih manis dengan sayuran segar dan ayam' },
+        { id: 'kk-09', name: 'Bihun Goreng', price: 28000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Bihun goreng lembut dengan bumbu gurih manis, sayuran segar, dan irisan ayam' },
+        { id: 'kk-10', name: 'Kwetiau Goreng', price: 28000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Kwetiau goreng aroma wok hei dipadukan telur orak-arik, fishcake, dan sawi hijau' },
+        { id: 'kk-11', name: 'Nasi Goreng', price: 28000, category: 'Makanan Utama', tenantId: 'kopkay', available: true, desc: 'Nasi goreng gurih aroma smoky dengan bumbu rempah dan potongan ayam' },
+
+        // KOPITIAM KOPI & KAYA - SNACK
+        { id: 'kk-12', name: 'Mantou', price: 20000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Roti mantou lembut kukus atau goreng khas kopitiam' },
+        { id: 'kk-13', name: 'Roti Titab', price: 18000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Roti panggang tebal dengan selai srikaya dan telur setengah matang' },
+        { id: 'kk-14', name: 'Kaya Toast', price: 20000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Roti bakar klasik isi selai srikaya homemade dan mentega dingin' },
+        { id: 'kk-15', name: 'Risol Ayam', price: 20000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Risoles renyah dengan isian ragout ayam gurih' },
+        { id: 'kk-16', name: 'Kentang Goreng', price: 18000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Kentang goreng renyah disajikan hangat dengan saus' },
+        { id: 'kk-17', name: 'Singkong Goreng', price: 18000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Singkong goreng merekah gurih dan empuk di dalam' },
+        { id: 'kk-18', name: 'Pisang Goreng', price: 18000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Pisang goreng krispi manis khas kopitiam' },
+        { id: 'kk-19', name: 'Telur Ayam Kampung 1/2 Masak', price: 15000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Telur ayam kampung setengah matang tekstur lembut dengan lada dan kecap asin' },
+        { id: 'kk-20', name: 'Roti Bakar Nanas', price: 20000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Roti bakar dengan olesan selai nanas manis segar' },
+        { id: 'kk-21', name: 'Roti Bakar Strawberry', price: 20000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Roti bakar dengan selai stroberi manis' },
+        { id: 'kk-22', name: 'Roti Bakar Coklat', price: 20000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Roti bakar dengan isian coklat lumer' },
+        { id: 'kk-23', name: 'Tahu Walik', price: 18000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Tahu goreng balik renyah dengan isian aci gurih' },
+        { id: 'kk-24', name: 'Mantao Buttermilk', price: 23000, category: 'Snack', tenantId: 'kopkay', available: true, desc: 'Mantou goreng renyah disiram saus buttermilk creamy' },
+
+        // KOPITIAM KOPI & KAYA - COFFEE
+        { id: 'kk-25', name: 'Kopi-O', price: 14000, category: 'Coffee', tenantId: 'kopkay', available: true, desc: 'Kopi hitam khas kopitiam panas dengan gula' },
+        { id: 'kk-26', name: 'Es Kopi-O', price: 18000, category: 'Coffee', tenantId: 'kopkay', available: true, desc: 'Kopi hitam khas kopitiam dingin menyegarkan' },
+        { id: 'kk-27', name: 'Kopi Susu', price: 14000, category: 'Coffee', tenantId: 'kopkay', available: true, desc: 'Kopi hitam pekat berpadu susu kental manis panas' },
+        { id: 'kk-28', name: 'Es Kopi Susu', price: 18000, category: 'Coffee', tenantId: 'kopkay', available: true, desc: 'Es kopi susu klasik khas kopitiam' },
+        { id: 'kk-29', name: 'Kopi Butter', price: 20000, category: 'Coffee', tenantId: 'kopkay', available: true, desc: 'Kopi hitam panas disajikan dengan potongan mentega gurih' },
+        { id: 'kk-30', name: 'Kopi Susu Gula Aren', price: 22000, category: 'Coffee', tenantId: 'kopkay', available: true, desc: 'Perpaduan kopi susu creamy dengan manis alami gula aren' },
+        { id: 'kk-31', name: 'Kopi O Aren', price: 20000, category: 'Coffee', tenantId: 'kopkay', available: true, desc: 'Kopi hitam aromatik dengan pemanis gula aren' },
+
+        // KOPITIAM KOPI & KAYA - NON COFFEE & HERBAL
+        { id: 'kk-32', name: 'Teh Hangat', price: 10000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Teh seduh hangat aromatik' },
+        { id: 'kk-33', name: 'Teh Es', price: 12000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Es teh manis segar' },
+        { id: 'kk-34', name: 'Coklat Hangat', price: 18000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Minuman coklat pekat hangat' },
+        { id: 'kk-35', name: 'Es Coklat', price: 20000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Minuman coklat dingin creamy' },
+        { id: 'kk-36', name: 'Teh Tarik Hangat', price: 15000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Teh tarik berbusa lembut disajikan hangat' },
+        { id: 'kk-37', name: 'Es Teh Tarik', price: 18000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Teh tarik khas kopitiam disajikan dingin' },
+        { id: 'kk-38', name: 'Matcha', price: 23000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Minuman green tea matcha creamy' },
+        { id: 'kk-39', name: 'Red Velvet', price: 20000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Minuman red velvet manis lembut' },
+        { id: 'kk-40', name: 'Lemon Tea', price: 20000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Teh segar dengan perasan lemon' },
+        { id: 'kk-41', name: 'Leci Tea', price: 20000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Teh dingin dengan aroma dan buah leci' },
+        { id: 'kk-42', name: 'Limau Panas', price: 15000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Minuman jeruk limau hangat menyegarkan' },
+        { id: 'kk-43', name: 'Limau Es', price: 17000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Es jeruk limau khas kopitiam' },
+        { id: 'kk-44', name: 'Jeruk Panas', price: 16000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Perasan jeruk murni disajikan hangat' },
+        { id: 'kk-45', name: 'Jeruk Es', price: 18000, category: 'Non Coffee', tenantId: 'kopkay', available: true, desc: 'Perasan jeruk murni dingin segar' },
+        { id: 'kk-46', name: 'Madu Sereh Jahe', price: 22000, category: 'Herbal Drink', tenantId: 'kopkay', available: true, desc: 'Minuman herbal hangat kombinasi madu, sereh, dan jahe' },
+        { id: 'kk-47', name: 'Nipis Madu Sereh', price: 22000, category: 'Herbal Drink', tenantId: 'kopkay', available: true, desc: 'Minuman herbal segar jeruk nipis, madu, dan sereh' },
+
+        // TENANT 2: KAMIE HAINAN (Komisi 10%)
+        { id: 'km-01', name: 'Kamie Ayam Jamur', price: 25000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie lembut dipadu ayam juicy dan jamur segar dalam kuah kaldu' },
+        { id: 'km-02', name: 'Kamie Original', price: 22000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie lembut, kuah gurih, daging ayam, sayuran segar, dan bawang goreng' },
+        { id: 'km-03', name: 'Kamie Yamin', price: 25000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie kuning lembut dengan saus manis gurih Yamin, daging ayam, dan sayur' },
+        { id: 'km-04', name: 'Kamie Hainan', price: 28000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie berbumbu kaldu ayam Hainan, kecap asin, jahe, bawang, dan minyak wijen' },
+        { id: 'km-05', name: 'Kamie Chili Oil', price: 22000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie lembut dengan sentuhan pedas minyak cabai, ayam, dan sayuran' },
+        { id: 'km-06', name: 'Topping Bakso', price: 10000, category: 'Toppings', tenantId: 'kamie', available: true, desc: 'Tambahan bakso sapi kenyal' },
+        { id: 'km-07', name: 'Topping Cheese Dumpling', price: 12000, category: 'Toppings', tenantId: 'kamie', available: true, desc: 'Tambahan dumpling isian keju lumer' },
+        { id: 'km-08', name: 'Topping Ayam Suwir', price: 5000, category: 'Toppings', tenantId: 'kamie', available: true, desc: 'Ekstra topping ayam suwir gurih' },
+        { id: 'km-09', name: 'Ekstra Pangsit', price: 5000, category: 'Toppings', tenantId: 'kamie', available: true, desc: 'Ekstra pangsit goreng renyah' },
+        { id: 'km-10', name: 'Ekstra Chili Oil', price: 5000, category: 'Toppings', tenantId: 'kamie', available: true, desc: 'Ekstra sambal minyak cabai khas Kamie' },
+        { id: 'km-11', name: 'Topping Chicken Katsu', price: 20000, category: 'Toppings', tenantId: 'kamie', available: true, desc: 'Potongan ayam katsu renyah' },
+        { id: 'km-12', name: 'Topping Komplit', price: 8000, category: 'Toppings', tenantId: 'kamie', available: true, desc: 'Paket topping campuran lengkap' },
+
+        // TENANT 3: LONTONG & SOTO (Komisi 10%)
+        { id: 'ls-01', name: 'Lontong Sayur', price: 17000, category: 'Sarapan & Kuah', tenantId: 'lontong-soto', available: true, desc: 'Lontong dengan kuah santan sayur gurih dan kerupuk' },
+        { id: 'ls-02', name: 'Lontong Pecal', price: 17000, category: 'Sarapan & Kuah', tenantId: 'lontong-soto', available: true, desc: 'Lontong dan sayuran segar disiram bumbu kacang pecal' },
+        { id: 'ls-03', name: 'Soto Ayam Kampung Tanpa Nasi', price: 20000, category: 'Sarapan & Kuah', tenantId: 'lontong-soto', available: true, desc: 'Soto kuah bening rempah dengan suwiran ayam kampung' },
+        { id: 'ls-04', name: 'Soto Ayam + Nasi', price: 25000, category: 'Sarapan & Kuah', tenantId: 'lontong-soto', available: true, desc: 'Paket soto ayam kampung lengkap dengan nasi putih' },
+        { id: 'ls-05', name: 'Ayam Kampung Goreng', price: 25000, category: 'Sarapan & Kuah', tenantId: 'lontong-soto', available: true, desc: 'Potongan ayam kampung goreng bumbu rempah' },
+        { id: 'ls-06', name: 'Soto Betawi', price: 28000, category: 'Sarapan & Kuah', tenantId: 'lontong-soto', available: true, desc: 'Soto khas Betawi berkuah santan susu gurih dengan potongan daging dan tomat' },
+
+        // TENANT 4: JOICE (Komisi 10%)
+        { id: 'jc-01', name: 'Joice Mango', price: 18000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus buah mangga segar dalam kemasan pouch praktis' },
+        { id: 'jc-02', name: 'Joice Watermelon', price: 15000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus semangka segar dingin' },
+        { id: 'jc-03', name: 'Joice Strawberry', price: 20000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus buah stroberi segar manis asam' },
+        { id: 'jc-04', name: 'Joice Melon', price: 15000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus buah melon segar' },
+        { id: 'jc-05', name: 'Joice Pineapple', price: 15000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus nanas segar menyegarkan' },
+        { id: 'jc-06', name: 'Joice Sirsak', price: 18000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus buah sirsak lembut menyegarkan' },
+        { id: 'jc-07', name: 'Joice Guava', price: 18000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus jambu biji merah segar' },
+        { id: 'jc-08', name: 'Joice Dragon Fruit', price: 18000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus buah naga merah segar' },
+        { id: 'jc-09', name: 'Joice Avocado', price: 23000, category: 'Jus Segar', tenantId: 'joice', available: true, desc: 'Jus alpukat kental creamy' },
+      ];
+
+      const INITIAL_TABLES = [
+        { id: 'T01', name: 'Meja 01', zone: 'Indoor', capacity: 4, status: 'available', guestName: '' },
+        { id: 'T02', name: 'Meja 02', zone: 'Indoor', capacity: 4, status: 'occupied', guestName: 'Meja 02 - Dine In' },
+        { id: 'T03', name: 'Meja 03', zone: 'Indoor', capacity: 2, status: 'available', guestName: '' },
+        { id: 'T04', name: 'Meja 04', zone: 'Indoor', capacity: 4, status: 'available', guestName: '' },
+        { id: 'T05', name: 'Meja 05', zone: 'Indoor', capacity: 6, status: 'reserved', guestName: 'Reservasi Jam 19:00' },
+        { id: 'T06', name: 'Meja 06', zone: 'Indoor', capacity: 4, status: 'available', guestName: '' },
+        { id: 'T07', name: 'Outdoor 01', zone: 'Outdoor', capacity: 4, status: 'occupied', guestName: 'Pelanggan Sore' },
+        { id: 'T08', name: 'Outdoor 02', zone: 'Outdoor', capacity: 4, status: 'available', guestName: '' },
+        { id: 'T09', name: 'Outdoor 03', zone: 'Outdoor', capacity: 2, status: 'cleaning', guestName: '' },
+        { id: 'T10', name: 'Outdoor 04', zone: 'Outdoor', capacity: 4, status: 'available', guestName: '' },
+        { id: 'T11', name: 'VIP Room A', zone: 'VIP', capacity: 8, status: 'available', guestName: '' },
+        { id: 'T12', name: 'VIP Room B', zone: 'VIP', capacity: 6, status: 'reserved', guestName: 'Meeting Keluarga' },
+      ];
+
+      const formatRp = (val) => 'Rp ' + Number(val || 0).toLocaleString('id-ID');
+
+      const loadStorage = (key, fallback) => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed !== null && parsed !== undefined) return parsed;
+          }
+        } catch (e) {}
+        return fallback;
+      };
+
+      function App() {
+        const [darkMode, setDarkMode] = useState(() => loadStorage('kopkay_dark_v1', false));
+        const [role, setRole] = useState(() => loadStorage('kopkay_role_v1', 'Cashier'));
+        const [activeTab, setActiveTab] = useState('order');
+
+        const [menuItems, setMenuItems] = useState(() => loadStorage('kopkay_menu_v1', INITIAL_MENU_ITEMS));
+        const [tables, setTables] = useState(() => loadStorage('kopkay_tables_v1', INITIAL_TABLES));
+        const [orders, setOrders] = useState(() => loadStorage('kopkay_orders_v1', []));
+
+        // Filter & Cart states
+        const [selectedTenant, setSelectedTenant] = useState('all');
+        const [selectedCategory, setSelectedCategory] = useState('All');
+        const [searchQuery, setSearchQuery] = useState('');
+        const [cart, setCart] = useState([]);
+        const [orderType, setOrderType] = useState('Dine-in');
+        const [tableName, setTableName] = useState('Meja 01');
+        const [customerName, setCustomerName] = useState('');
+        const [orderNote, setOrderNote] = useState('');
+        const [paymentMethod, setPaymentMethod] = useState('Tunai');
+        const [cashReceived, setCashReceived] = useState('');
+        const [errorMsg, setErrorMsg] = useState('');
+        const [receiptOrder, setReceiptOrder] = useState(null);
+        const [mobileCartOpen, setMobileCartOpen] = useState(false);
+
+        // Table states
+        const [zoneFilter, setZoneFilter] = useState('All');
+        const [selectedTableId, setSelectedTableId] = useState('T01');
+        const [newTableName, setNewTableName] = useState('');
+        const [newTableZone, setNewTableZone] = useState('Indoor');
+        const [newTableCap, setNewTableCap] = useState(4);
+
+        // Kitchen clock
+        const [now, setNow] = useState(Date.now());
+
+        // Admin new menu form
+        const [newMenuName, setNewMenuName] = useState('');
+        const [newMenuPrice, setNewMenuPrice] = useState('');
+        const [newMenuTenant, setNewMenuTenant] = useState('kopkay');
+        const [newMenuCat, setNewMenuCat] = useState('Makanan Utama');
+        const fileInputRef = useRef(null);
+
+        useEffect(() => {
+          localStorage.setItem('kopkay_dark_v1', JSON.stringify(darkMode));
+          if (darkMode) document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+        }, [darkMode]);
+
+        useEffect(() => {
+          localStorage.setItem('kopkay_role_v1', JSON.stringify(role));
+          if (role !== 'Admin' && activeTab === 'menu-admin') setActiveTab('order');
+        }, [role, activeTab]);
+
+        useEffect(() => {
+          localStorage.setItem('kopkay_menu_v1', JSON.stringify(menuItems));
+        }, [menuItems]);
+
+        useEffect(() => {
+          localStorage.setItem('kopkay_tables_v1', JSON.stringify(tables));
+        }, [tables]);
+
+        useEffect(() => {
+          localStorage.setItem('kopkay_orders_v1', JSON.stringify(orders));
+        }, [orders]);
+
+        useEffect(() => {
+          const timer = setInterval(() => setNow(Date.now()), 15000);
+          return () => clearInterval(timer);
+        }, []);
+
+        const categories = useMemo(() => {
+          const filtered = selectedTenant === 'all' ? menuItems : menuItems.filter((i) => i.tenantId === selectedTenant);
+          return ['All', ...Array.from(new Set(filtered.map((i) => i.category)))];
+        }, [menuItems, selectedTenant]);
+
+        const visibleItems = useMemo(() => {
+          return menuItems.filter((item) => {
+            const matchTenant = selectedTenant === 'all' || item.tenantId === selectedTenant;
+            const matchCategory = selectedCategory === 'All' || item.category === selectedCategory;
+            const matchSearch =
+              !searchQuery.trim() ||
+              item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              item.category.toLowerCase().includes(searchQuery.toLowerCase());
+            return matchTenant && matchCategory && matchSearch;
+          });
+        }, [menuItems, selectedTenant, selectedCategory, searchQuery]);
+
+        const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+        const totalCartQty = cart.reduce((sum, c) => sum + c.qty, 0);
+        const getQtyInCart = (id) => cart.find((c) => c.id === id)?.qty || 0;
+        const getTenantName = (id) => TENANTS.find((t) => t.id === id)?.name || id;
+
+        const addToCart = (item) => {
+          if (!item.available) return;
+          setCart((prev) => {
+            const found = prev.find((c) => c.id === item.id);
+            if (found) return prev.map((c) => (c.id === item.id ? { ...c, qty: c.qty + 1 } : c));
+            return [...prev, { id: item.id, name: item.name, price: item.price, tenantId: item.tenantId, category: item.category, qty: 1 }];
+          });
+        };
+
+        const updateQty = (id, delta) => {
+          setCart((prev) => prev.map((c) => (c.id === id ? { ...c, qty: c.qty + delta } : c)).filter((c) => c.qty > 0));
+        };
+
+        const handleCheckout = () => {
+          setErrorMsg('');
+          if (cart.length === 0) {
+            setErrorMsg('Keranjang pesanan masih kosong.');
+            return;
+          }
+          const numericCash = paymentMethod === 'Tunai' ? Number(cashReceived) || subtotal : subtotal;
+          if (paymentMethod === 'Tunai' && numericCash < subtotal) {
+            setErrorMsg('Uang tunai yang diterima kurang dari total tagihan.');
+            return;
+          }
+
+          const tenantBreakdown = TENANTS.map((tenant) => {
+            const tItems = cart.filter((i) => i.tenantId === tenant.id);
+            const grossSales = tItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+            const commissionCut = Math.round(grossSales * tenant.commissionRate);
+            return {
+              tenantId: tenant.id,
+              tenantName: tenant.name,
+              ownerType: tenant.ownerType,
+              commissionRate: tenant.commissionRate,
+              grossSales,
+              commissionCut,
+              netTenantPayout: grossSales - commissionCut,
+            };
+          }).filter((t) => t.grossSales > 0);
+
+          const newOrder = {
+            id: 'ORD-' + String(Date.now()).slice(-6),
+            createdAt: new Date().toISOString(),
+            orderType,
+            tableName: orderType === 'Dine-in' ? tableName : 'Takeaway',
+            customerName: customerName.trim() || 'Pelanggan Umum',
+            orderNote: orderNote.trim(),
+            items: [...cart],
+            total: subtotal,
+            paymentMethod,
+            cashReceived: numericCash,
+            changeAmount: paymentMethod === 'Tunai' ? numericCash - subtotal : 0,
+            kitchenStatus: 'New',
+            tenantBreakdown,
+          };
+
+          setOrders((prev) => [newOrder, ...prev]);
+
+          if (orderType === 'Dine-in') {
+            setTables((prev) =>
+              prev.map((t) => (t.name === tableName ? { ...t, status: 'occupied', guestName: newOrder.customerName } : t))
+            );
+          }
+
+          setCart([]);
+          setCustomerName('');
+          setOrderNote('');
+          setCashReceived('');
+          setMobileCartOpen(false);
+          setReceiptOrder(newOrder);
+        };
+
+        // Summary calculations
+        const summaryByTenant = useMemo(() => {
+          return TENANTS.map((tenant) => {
+            let grossSales = 0;
+            let totalQty = 0;
+            orders.forEach((order) => {
+              order.items.forEach((item) => {
+                if (item.tenantId === tenant.id) {
+                  grossSales += item.price * item.qty;
+                  totalQty += item.qty;
+                }
+              });
+            });
+            const commissionCut = Math.round(grossSales * tenant.commissionRate);
+            return {
+              ...tenant,
+              totalQty,
+              grossSales,
+              commissionCut,
+              netPayout: grossSales - commissionCut,
+            };
+          });
+        }, [orders]);
+
+        const shiftTotals = summaryByTenant.reduce(
+          (acc, cur) => ({
+            qty: acc.qty + cur.totalQty,
+            gross: acc.gross + cur.grossSales,
+            commission: acc.commission + cur.commissionCut,
+            net: acc.net + cur.netPayout,
+          }),
+          { qty: 0, gross: 0, commission: 0, net: 0 }
+        );
+
+        const kopkayIncome =
+          (summaryByTenant.find((t) => t.id === 'kopkay')?.grossSales || 0) + shiftTotals.commission;
+
+        const exportCSV = () => {
+          const headers = ['Nama Tenant', 'Skema', 'Item Terjual', 'Omzet Kotor (Rp)', 'Potongan 10% (Rp)', 'Hak Bersih Tenant (Rp)'];
+          const rows = summaryByTenant.map((t) => [
+            `"${t.name}"`,
+            t.ownerType === 'internal' ? 'Utama (0%)' : 'Mitra (10%)',
+            t.totalQty,
+            t.grossSales,
+            t.commissionCut,
+            t.netPayout,
+          ]);
+          rows.push(['"TOTAL"', '""', shiftTotals.qty, shiftTotals.gross, shiftTotals.commission, shiftTotals.net]);
+          const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('
+');
+          const link = document.createElement('a');
+          link.setAttribute('href', encodeURI(csv));
+          link.setAttribute('download', `rekap-shift-kopkay-${new Date().toISOString().slice(0, 10)}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+
+        const exportJSON = () => {
+          const blob = new Blob([JSON.stringify(orders, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `backup-kopkay-${new Date().toISOString().slice(0, 10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        const activeKitchenCount = orders.filter((o) => o.kitchenStatus !== 'Completed').length;
+
+        const navItems = [
+          { id: 'order', label: 'Kasir', icon: 'cart' },
+          { id: 'tables', label: 'Meja', icon: 'grid' },
+          { id: 'kitchen', label: 'Dapur', icon: 'chef', badge: activeKitchenCount || null },
+          { id: 'dashboard', label: 'Ringkasan', icon: 'dashboard' },
+          { id: 'report', label: 'Rekap 10%', icon: 'report' },
+          ...(role === 'Admin' ? [{ id: 'menu-admin', label: 'Atur Menu', icon: 'sliders' }] : []),
+        ];
+
+        const statusStyles = {
+          available: { label: 'Kosong', border: 'border-emerald-500/70 bg-emerald-50/40 dark:bg-emerald-950/20', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300' },
+          occupied: { label: 'Terisi', border: 'border-amber-500/70 bg-amber-50/40 dark:bg-amber-950/20', badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300' },
+          reserved: { label: 'Reservasi', border: 'border-sky-500/70 bg-sky-50/40 dark:bg-sky-950/20', badge: 'bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-300' },
+          cleaning: { label: 'Bersihkan', border: 'border-rose-500/70 bg-rose-50/40 dark:bg-rose-950/20', badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-300' },
+        };
+
+        const selectedTable = tables.find((t) => t.id === selectedTableId) || tables[0];
+
+        const renderCartPanel = () => (
+          <div className="flex flex-col h-full bg-white dark:bg-slate-900">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">Current Order</h3>
+                <p className="text-xs text-slate-500">{totalCartQty} item dipilih</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {cart.length > 0 && (
+                  <button
+                    onClick={() => setCart([])}
+                    className="text-xs font-semibold text-rose-500 flex items-center gap-1"
+                  >
+                    <Icon name="trash" className="w-3.5 h-3.5" />
+                    Hapus
+                  </button>
+                )}
+                <button
+                  onClick={() => setMobileCartOpen(false)}
+                  className="lg:hidden p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500"
+                >
+                  <Icon name="x" className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3.5 border-b border-slate-200 dark:border-slate-800 space-y-2 bg-slate-50/70 dark:bg-slate-950/30">
+              <div className="grid grid-cols-2 gap-2">
+                {['Dine-in', 'Takeaway'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setOrderType(type)}
+                    className={`py-1.5 rounded-xl text-xs font-semibold border ${
+                      orderType === type
+                        ? 'bg-teal-600 text-white border-teal-600'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {orderType === 'Dine-in' && (
+                  <select
+                    value={tableName}
+                    onChange={(e) => setTableName(e.target.value)}
+                    className="px-2.5 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  >
+                    {tables.map((t) => (
+                      <option key={t.id} value={t.name}>
+                        {t.name} ({t.zone})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nama pelanggan..."
+                  className={`px-2.5 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 ${
+                    orderType === 'Takeaway' ? 'col-span-2' : ''
+                  }`}
+                />
+              </div>
+              <input
+                type="text"
+                value={orderNote}
+                onChange={(e) => setOrderNote(e.target.value)}
+                placeholder="Catatan dapur (kurang manis, pedas pisah)..."
+                className="w-full px-2.5 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3.5 space-y-2">
+              {cart.length === 0 ? (
+                <div className="h-36 flex flex-col items-center justify-center text-center text-slate-400 text-xs">
+                  <p>Keranjang masih kosong.</p>
+                  <p className="mt-1">Pilih menu untuk menambah pesanan.</p>
+                </div>
+              ) : (
+                cart.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{item.name}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {formatRp(item.price)} x {item.qty}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => updateQty(item.id, -1)}
+                        className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center"
+                      >
+                        <Icon name="minus" className="w-3 h-3" />
+                      </button>
+                      <span className="text-xs font-bold w-4 text-center">{item.qty}</span>
+                      <button
+                        onClick={() => updateQty(item.id, 1)}
+                        className="w-6 h-6 rounded-lg bg-teal-600 text-white flex items-center justify-center"
+                      >
+                        <Icon name="plus" className="w-3 h-3" />
+                      </button>
+                      <span className="text-xs font-bold w-20 text-right">{formatRp(item.price * item.qty)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-3 bg-slate-50 dark:bg-slate-950/40">
+              {errorMsg && (
+                <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-1.5">
+                  <Icon name="alert" className="w-4 h-4 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                {['Tunai', 'QRIS'].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setPaymentMethod(m)}
+                    className={`py-2 rounded-xl text-xs font-semibold border ${
+                      paymentMethod === m
+                        ? 'bg-slate-900 text-white border-slate-900 dark:bg-teal-600 dark:border-teal-600'
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+
+              {paymentMethod === 'Tunai' && cart.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">Uang Diterima:</span>
+                    <div className="flex gap-1">
+                      {[subtotal, 50000, 100000].map((preset) => (
+                        <button
+                          key={preset}
+                          onClick={() => setCashReceived(String(preset))}
+                          className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[11px] font-medium"
+                        >
+                          {preset === subtotal ? 'Pas' : formatRp(preset)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <input
+                    type="number"
+                    value={cashReceived}
+                    onChange={(e) => setCashReceived(e.target.value)}
+                    placeholder={`Minimal ${subtotal}`}
+                    className="w-full px-3 py-1.5 rounded-xl text-sm font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                  />
+                  {Number(cashReceived) >= subtotal && (
+                    <div className="flex justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      <span>Kembalian:</span>
+                      <span>{formatRp(Number(cashReceived) - subtotal)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">Total Bayar</span>
+                <span className="text-xl font-extrabold text-slate-900 dark:text-white">{formatRp(subtotal)}</span>
+              </div>
+
+              <button
+                onClick={handleCheckout}
+                disabled={cart.length === 0}
+                className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white font-bold text-sm shadow-sm"
+              >
+                Proses Pembayaran & Struk
+              </button>
+            </div>
+          </div>
+        );
+
+        return (
+          <div className="h-screen w-screen overflow-hidden flex flex-col lg:flex-row bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+            {/* Desktop Sidebar */}
+            <aside className="hidden lg:flex w-64 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col justify-between">
+              <div>
+                <div className="h-16 px-4 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800">
+                  <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+                    <Icon name="coffee" className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h1 className="font-bold text-sm text-slate-900 dark:text-white">KASIR KOPKAY</h1>
+                    <p className="text-[11px] font-medium text-teal-600 dark:text-teal-400">KOPITIAM KOPI & KAYA</p>
+                  </div>
+                </div>
+                <nav className="p-3 space-y-1.5">
+                  {navItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium ${
+                        activeTab === item.id
+                          ? 'bg-teal-600 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon name={item.icon} className="w-5 h-5" />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-800">
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+              <div className="p-3 border-t border-slate-200 dark:border-slate-800">
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="font-semibold text-slate-700 dark:text-slate-200">Aturan Bagi Hasil</p>
+                  <p className="mt-1">Kopkay: 100% Toko</p>
+                  <p>Tenant Mitra: Potongan 10%</p>
+                </div>
+              </div>
+            </aside>
+
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              {/* Top Header */}
+              <header className="h-14 lg:h-16 px-3 lg:px-6 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 lg:hidden shrink-0">
+                  <div className="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center">
+                    <Icon name="coffee" className="w-4 h-4" />
+                  </div>
+                </div>
+
+                <div className="relative flex-1 max-w-md">
+                  <span className="text-slate-400 absolute left-3 top-1/2 -translate-y-1/2">
+                    <Icon name="search" className="w-4 h-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (activeTab !== 'order' && activeTab !== 'menu-admin') setActiveTab('order');
+                    }}
+                    placeholder="Cari menu..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs lg:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 lg:gap-2.5 shrink-0">
+                  <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Live
+                  </div>
+
+                  <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 border border-slate-200 dark:border-slate-700">
+                    {['Cashier', 'Admin'].map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setRole(r)}
+                        className={`px-2 py-1 rounded-lg text-[11px] lg:text-xs font-semibold ${
+                          role === r ? 'bg-teal-600 text-white' : 'text-slate-600 dark:text-slate-400'
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setDarkMode(!darkMode)}
+                    className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                  >
+                    <Icon name={darkMode ? 'sun' : 'moon'} className="w-4 h-4" />
+                  </button>
+                </div>
+              </header>
+
+              {/* Mobile Horizontal Nav */}
+              <nav className="lg:hidden flex items-center gap-1.5 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto no-scrollbar shrink-0">
+                {navItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 ${
+                      activeTab === item.id
+                        ? 'bg-teal-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <Icon name={item.icon} className="w-3.5 h-3.5" />
+                    <span>{item.label}</span>
+                    {item.badge && (
+                      <span className="px-1.5 py-0.2 text-[10px] rounded-full bg-amber-400 text-slate-900 font-bold">
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </nav>
+
+              {/* Active Views */}
+              <main className="flex-1 flex overflow-hidden relative">
+                {activeTab === 'order' && (
+                  <div className="flex-1 flex overflow-hidden">
+                    <div className="flex-1 flex flex-col overflow-hidden p-3 lg:p-6 pb-20 lg:pb-6">
+                      {/* Filter Tenant */}
+                      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            setSelectedTenant('all');
+                            setSelectedCategory('All');
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap border ${
+                            selectedTenant === 'all'
+                              ? 'bg-slate-900 text-white border-slate-900 dark:bg-teal-600 dark:border-teal-600'
+                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          Semua (4)
+                        </button>
+                        {TENANTS.map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={() => {
+                              setSelectedTenant(t.id);
+                              setSelectedCategory('All');
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap border flex items-center gap-1.5 ${
+                              selectedTenant === t.id
+                                ? 'bg-teal-600 text-white border-teal-600'
+                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <Icon name="store" className="w-3.5 h-3.5" />
+                            <span>{t.name}</span>
+                            {t.commissionRate > 0 && <span className="text-[10px] opacity-80">(10%)</span>}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Filter Kategori */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3 shrink-0">
+                        {categories.map((cat) => (
+                          <button
+                            key={cat}
+                            onClick={() => setSelectedCategory(cat)}
+                            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                              selectedCategory === cat
+                                ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-300 font-semibold'
+                                : 'bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                            }`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Product Grid */}
+                      <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 content-start pr-0.5">
+                        {visibleItems.map((item) => {
+                          const qty = getQtyInCart(item.id);
+                          const isTenant = item.tenantId !== 'kopkay';
+                          return (
+                            <div
+                              key={item.id}
+                              className={`rounded-2xl border p-3.5 flex flex-col justify-between ${
+                                !item.available
+                                  ? 'opacity-50 bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
+                                  : qty > 0
+                                  ? 'bg-teal-50/40 dark:bg-teal-950/20 border-teal-500'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <span
+                                    className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md ${
+                                      isTenant
+                                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                                        : 'bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-300'
+                                    }`}
+                                  >
+                                    {getTenantName(item.tenantId)}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">{item.category}</span>
+                                </div>
+                                <h3 className="font-bold text-sm text-slate-900 dark:text-white">{item.name}</h3>
+                                {item.desc && (
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">{item.desc}</p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                                <span className="font-extrabold text-sm text-teal-600 dark:text-teal-400">
+                                  {formatRp(item.price)}
+                                </span>
+                                {!item.available ? (
+                                  <span className="text-xs font-semibold text-rose-500">Habis</span>
+                                ) : qty === 0 ? (
+                                  <button
+                                    onClick={() => addToCart(item)}
+                                    className="px-3 py-1.5 rounded-xl bg-teal-600 text-white text-xs font-semibold flex items-center gap-1"
+                                  >
+                                    <Icon name="plus" className="w-3.5 h-3.5" />
+                                    Tambah
+                                  </button>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => updateQty(item.id, -1)}
+                                      className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center"
+                                    >
+                                      <Icon name="minus" className="w-3.5 h-3.5" />
+                                    </button>
+                                    <span className="w-5 text-center text-sm font-bold">{qty}</span>
+                                    <button
+                                      onClick={() => updateQty(item.id, 1)}
+                                      className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center"
+                                    >
+                                      <Icon name="plus" className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Desktop Cart Sidebar */}
+                    <div className="hidden lg:block w-96 shrink-0 border-l border-slate-200 dark:border-slate-800">
+                      {renderCartPanel()}
+                    </div>
+
+                    {/* Mobile Floating Cart Bar */}
+                    {totalCartQty > 0 && (
+                      <div className="lg:hidden fixed bottom-3 left-3 right-3 z-30">
+                        <button
+                          onClick={() => setMobileCartOpen(true)}
+                          className="w-full py-3.5 px-4 rounded-2xl bg-teal-600 text-white shadow-lg flex items-center justify-between font-bold text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Icon name="cart" className="w-4 h-4" />
+                            <span>{totalCartQty} Item di Keranjang</span>
+                          </div>
+                          <span>{formatRp(subtotal)} →</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Mobile Cart Drawer */}
+                    {mobileCartOpen && (
+                      <div className="lg:hidden fixed inset-0 z-40 bg-black/50 flex flex-col justify-end">
+                        <div className="h-[88vh] rounded-t-3xl overflow-hidden shadow-2xl">{renderCartPanel()}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'tables' && (
+                  <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+                    <div className="flex-1 p-4 lg:p-6 overflow-y-auto">
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <h2 className="text-lg font-bold">Floor Plan Meja</h2>
+                        <div className="flex gap-1.5">
+                          {['All', 'Indoor', 'Outdoor', 'VIP'].map((z) => (
+                            <button
+                              key={z}
+                              onClick={() => setZoneFilter(z)}
+                              className={`px-3 py-1 rounded-xl text-xs font-semibold ${
+                                zoneFilter === z
+                                  ? 'bg-teal-600 text-white'
+                                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
+                              }`}
+                            >
+                              {z}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                        {(zoneFilter === 'All' ? tables : tables.filter((t) => t.zone === zoneFilter)).map((t) => {
+                          const st = statusStyles[t.status] || statusStyles.available;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => setSelectedTableId(t.id)}
+                              className={`p-3.5 rounded-2xl border-2 text-left ${st.border} ${
+                                t.id === selectedTable?.id ? 'ring-2 ring-teal-500' : ''
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[11px] font-semibold text-slate-500">{t.zone}</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${st.badge}`}>
+                                  {st.label}
+                                </span>
+                              </div>
+                              <p className="font-bold text-sm">{t.name}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{t.capacity} kursi</p>
+                              {t.guestName && <p className="mt-1.5 text-xs font-medium truncate">{t.guestName}</p>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="w-full lg:w-80 shrink-0 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4">
+                      {selectedTable && (
+                        <div className="space-y-3">
+                          <h3 className="font-bold text-base">
+                            {selectedTable.name} ({selectedTable.zone})
+                          </h3>
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.entries(statusStyles).map(([key, val]) => (
+                              <button
+                                key={key}
+                                onClick={() =>
+                                  setTables((prev) =>
+                                    prev.map((tb) =>
+                                      tb.id === selectedTable.id
+                                        ? { ...tb, status: key, guestName: key === 'available' ? '' : tb.guestName }
+                                        : tb
+                                    )
+                                  )
+                                }
+                                className={`py-2 rounded-xl text-xs font-semibold border ${
+                                  selectedTable.status === key
+                                    ? 'bg-teal-600 text-white border-teal-600'
+                                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                                }`}
+                              >
+                                {val.label}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            value={selectedTable.guestName}
+                            onChange={(e) =>
+                              setTables((prev) =>
+                                prev.map((tb) =>
+                                  tb.id === selectedTable.id ? { ...tb, guestName: e.target.value } : tb
+                                )
+                              )
+                            }
+                            placeholder="Catatan tamu / reservasi..."
+                            className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                          />
+                        </div>
+                      )}
+
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (!newTableName.trim()) return;
+                          setTables((prev) => [
+                            ...prev,
+                            {
+                              id: 'T-' + Date.now(),
+                              name: newTableName.trim(),
+                              zone: newTableZone,
+                              capacity: Number(newTableCap) || 4,
+                              status: 'available',
+                              guestName: '',
+                            },
+                          ]);
+                          setNewTableName('');
+                        }}
+                        className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2"
+                      >
+                        <p className="text-xs font-bold">Tambah Meja Baru</p>
+                        <input
+                          type="text"
+                          value={newTableName}
+                          onChange={(e) => setNewTableName(e.target.value)}
+                          placeholder="Nama meja..."
+                          className="w-full px-3 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={newTableZone}
+                            onChange={(e) => setNewTableZone(e.target.value)}
+                            className="px-2 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                          >
+                            <option value="Indoor">Indoor</option>
+                            <option value="Outdoor">Outdoor</option>
+                            <option value="VIP">VIP</option>
+                          </select>
+                          <input
+                            type="number"
+                            value={newTableCap}
+                            onChange={(e) => setNewTableCap(e.target.value)}
+                            className="px-2 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                          />
+                        </div>
+                        <button type="submit" className="w-full py-2 rounded-xl bg-teal-600 text-white text-xs font-bold">
+                          Simpan Meja
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'kitchen' && (
+                  <div className="flex-1 p-4 lg:p-6 overflow-y-auto">
+                    <h2 className="text-lg font-bold mb-4">Antrean Dapur & Tenant</h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      {[
+                        { id: 'New', title: 'Pesanan Baru', next: 'Preparing', btn: 'Mulai Masak', border: 'border-rose-500' },
+                        { id: 'Preparing', title: 'Sedang Dibuat', next: 'Ready', btn: 'Siap Antar', border: 'border-amber-500' },
+                        { id: 'Ready', title: 'Siap Disajikan', next: 'Completed', btn: 'Selesai', border: 'border-emerald-500' },
+                      ].map((col) => {
+                        const colOrders = orders.filter((o) => o.kitchenStatus === col.id);
+                        return (
+                          <div
+                            key={col.id}
+                            className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 p-3.5 space-y-3 min-h-[300px]"
+                          >
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                              <h3 className="font-bold text-sm">{col.title}</h3>
+                              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-white dark:bg-slate-800">
+                                {colOrders.length}
+                              </span>
+                            </div>
+                            {colOrders.length === 0 ? (
+                              <p className="text-xs text-slate-400 text-center py-10">Kosong</p>
+                            ) : (
+                              colOrders.map((order) => (
+                                <div
+                                  key={order.id}
+                                  className={`rounded-xl border-l-4 ${col.border} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 space-y-2`}
+                                >
+                                  <div className="flex justify-between text-xs">
+                                    <span className="font-bold">
+                                      {order.tableName} ({order.id})
+                                    </span>
+                                    <span className="text-amber-600 font-semibold">
+                                      {Math.max(1, Math.floor((now - new Date(order.createdAt).getTime()) / 60000))}m
+                                    </span>
+                                  </div>
+                                  <ul className="space-y-1 text-xs border-t border-slate-100 dark:border-slate-800 pt-1.5">
+                                    {order.items.map((item) => (
+                                      <li key={item.id} className="flex justify-between">
+                                        <span className="font-semibold">
+                                          {item.qty}x {item.name}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">{getTenantName(item.tenantId)}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  {order.orderNote && (
+                                    <p className="text-[11px] p-1.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">
+                                      Catatan: {order.orderNote}
+                                    </p>
+                                  )}
+                                  <button
+                                    onClick={() =>
+                                      setOrders((prev) =>
+                                        prev.map((o) => (o.id === order.id ? { ...o, kitchenStatus: col.next } : o))
+                                      )
+                                    }
+                                    className="w-full py-2 rounded-xl bg-teal-600 text-white text-xs font-bold"
+                                  >
+                                    {col.btn}
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'dashboard' && (
+                  <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
+                    <h2 className="text-lg font-bold">Ringkasan Penjualan Hari Ini</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <p className="text-xs font-semibold text-slate-500">TOTAL OMZET KOTOR</p>
+                        <p className="text-2xl font-extrabold mt-1">{formatRp(shiftTotals.gross)}</p>
+                      </div>
+                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <p className="text-xs font-semibold text-slate-500">PENDAPATAN BERSIH KOPKAY</p>
+                        <p className="text-2xl font-extrabold text-emerald-600 mt-1">{formatRp(kopkayIncome)}</p>
+                      </div>
+                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <p className="text-xs font-semibold text-slate-500">KOMISI TENANT (10%)</p>
+                        <p className="text-2xl font-extrabold text-amber-600 mt-1">{formatRp(shiftTotals.commission)}</p>
+                      </div>
+                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <p className="text-xs font-semibold text-slate-500">TOTAL TRANSAKSI</p>
+                        <p className="text-2xl font-extrabold mt-1">{orders.length}</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+                      <h3 className="font-bold text-sm mb-3">Riwayat Transaksi Terbaru</h3>
+                      {orders.length === 0 ? (
+                        <p className="text-xs text-slate-400">Belum ada transaksi.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {orders.slice(0, 15).map((o) => (
+                            <div
+                              key={o.id}
+                              className="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs"
+                            >
+                              <div>
+                                <p className="font-bold">
+                                  {o.id} • {o.tableName} ({o.customerName})
+                                </p>
+                                <p className="text-slate-400">
+                                  {o.paymentMethod} •{' '}
+                                  {new Date(o.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-teal-600">{formatRp(o.total)}</span>
+                                <button
+                                  onClick={() => setReceiptOrder(o)}
+                                  className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold"
+                                >
+                                  Struk
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'report' && (
+                  <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-lg font-bold">Rekap Closing Shift & Komisi 10%</h2>
+                        <p className="text-xs text-slate-500">Otomatis memotong 10% omzet kotor tenant mitra</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={exportCSV}
+                          className="px-3 py-2 rounded-xl bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5"
+                        >
+                          <Icon name="download" className="w-3.5 h-3.5" />
+                          Export CSV/Excel
+                        </button>
+                        <button
+                          onClick={exportJSON}
+                          className="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold"
+                        >
+                          Backup JSON
+                        </button>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold"
+                        >
+                          Restore
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".json"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (!f) return;
+                            const r = new FileReader();
+                            r.onload = (ev) => {
+                              try {
+                                const parsed = JSON.parse(ev.target.result);
+                                if (Array.isArray(parsed)) setOrders(parsed);
+                              } catch {}
+                            };
+                            r.readAsText(f);
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 text-slate-500">
+                            <th className="p-3 font-bold">Tenant</th>
+                            <th className="p-3 font-bold text-right">Item</th>
+                            <th className="p-3 font-bold text-right">Omzet Kotor</th>
+                            <th className="p-3 font-bold text-right">Potongan 10%</th>
+                            <th className="p-3 font-bold text-right">Hak Bersih</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {summaryByTenant.map((row) => (
+                            <tr key={row.id}>
+                              <td className="p-3 font-bold">{row.name}</td>
+                              <td className="p-3 text-right">{row.totalQty}</td>
+                              <td className="p-3 text-right">{formatRp(row.grossSales)}</td>
+                              <td className="p-3 text-right font-bold text-amber-600">{formatRp(row.commissionCut)}</td>
+                              <td className="p-3 text-right font-extrabold text-emerald-600">{formatRp(row.netPayout)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-slate-200 dark:border-slate-700 font-extrabold bg-slate-50 dark:bg-slate-950/50">
+                            <td className="p-3">TOTAL</td>
+                            <td className="p-3 text-right">{shiftTotals.qty}</td>
+                            <td className="p-3 text-right">{formatRp(shiftTotals.gross)}</td>
+                            <td className="p-3 text-right text-amber-600">{formatRp(shiftTotals.commission)}</td>
+                            <td className="p-3 text-right text-emerald-600">{formatRp(shiftTotals.net)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    <div className="p-4 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-rose-700 dark:text-rose-300 font-semibold">
+                        Tutup shift hari ini? Pastikan laporan sudah di-export terlebih dahulu.
+                      </p>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Reset seluruh transaksi untuk shift baru?')) setOrders([]);
+                        }}
+                        className="px-3 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold"
+                      >
+                        Reset Shift
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'menu-admin' && role === 'Admin' && (
+                  <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-bold">Kelola Menu & Harga</h2>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Reset ke daftar menu awal?')) setMenuItems(INITIAL_MENU_ITEMS);
+                        }}
+                        className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-semibold"
+                      >
+                        Reset Menu Awal
+                      </button>
+                    </div>
+
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!newMenuName.trim() || !newMenuPrice) return;
+                        setMenuItems((prev) => [
+                          {
+                            id: 'item-' + Date.now(),
+                            name: newMenuName.trim(),
+                            price: Number(newMenuPrice),
+                            tenantId: newMenuTenant,
+                            category: newMenuCat,
+                            available: true,
+                            desc: '',
+                          },
+                          ...prev,
+                        ]);
+                        setNewMenuName('');
+                        setNewMenuPrice('');
+                      }}
+                      className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5"
+                    >
+                      <input
+                        type="text"
+                        value={newMenuName}
+                        onChange={(e) => setNewMenuName(e.target.value)}
+                        placeholder="Nama menu baru..."
+                        className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                      />
+                      <input
+                        type="number"
+                        value={newMenuPrice}
+                        onChange={(e) => setNewMenuPrice(e.target.value)}
+                        placeholder="Harga (misal 25000)"
+                        className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                      />
+                      <select
+                        value={newMenuTenant}
+                        onChange={(e) => setNewMenuTenant(e.target.value)}
+                        className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                      >
+                        {TENANTS.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={newMenuCat}
+                        onChange={(e) => setNewMenuCat(e.target.value)}
+                        placeholder="Kategori..."
+                        className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                      />
+                      <button type="submit" className="py-2 rounded-xl bg-teal-600 text-white text-xs font-bold">
+                        + Tambah Menu
+                      </button>
+                    </form>
+
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 text-slate-500">
+                            <th className="p-3 font-bold">Menu</th>
+                            <th className="p-3 font-bold">Tenant</th>
+                            <th className="p-3 font-bold">Harga</th>
+                            <th className="p-3 font-bold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {menuItems
+                            .filter((i) => !searchQuery.trim() || i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                            .map((item) => (
+                              <tr key={item.id}>
+                                <td className="p-3 font-bold">{item.name}</td>
+                                <td className="p-3 text-slate-500">{getTenantName(item.tenantId)}</td>
+                                <td className="p-3">
+                                  <input
+                                    type="number"
+                                    value={item.price}
+                                    onChange={(e) =>
+                                      setMenuItems((prev) =>
+                                        prev.map((m) => (m.id === item.id ? { ...m, price: Number(e.target.value) } : m))
+                                      )
+                                    }
+                                    className="w-24 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                                  />
+                                </td>
+                                <td className="p-3">
+                                  <button
+                                    onClick={() =>
+                                      setMenuItems((prev) =>
+                                        prev.map((m) => (m.id === item.id ? { ...m, available: !m.available } : m))
+                                      )
+                                    }
+                                    className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
+                                      item.available
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
+                                    }`}
+                                  >
+                                    {item.available ? 'Tersedia' : 'Habis'}
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </main>
+            </div>
+
+            {/* Thermal Receipt Modal */}
+            {receiptOrder && (
+              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm">
+                      <Icon name="check" className="w-5 h-5" />
+                      <span>Struk Transaksi</span>
+                    </div>
+                    <button onClick={() => setReceiptOrder(null)} className="p-1 text-slate-400">
+                      <Icon name="x" className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div
+                    id="thermal-receipt-area"
+                    className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-dashed border-slate-300 dark:border-slate-700 font-mono text-xs space-y-2"
+                  >
+                    <div className="text-center border-b border-dashed border-slate-300 pb-2">
+                      <p className="font-bold text-sm">KOPITIAM KOPI & KAYA</p>
+                      <p className="text-[11px]">Pekanbaru, Riau</p>
+                      <p className="text-[11px] mt-1">
+                        {receiptOrder.id} |{' '}
+                        {new Date(receiptOrder.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                      <p className="text-[11px]">
+                        {receiptOrder.tableName} • {receiptOrder.customerName}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1 border-b border-dashed border-slate-300 pb-2">
+                      {receiptOrder.items.map((item) => (
+                        <div key={item.id} className="flex justify-between">
+                          <span>
+                            {item.qty}x {item.name}
+                          </span>
+                          <span>{formatRp(item.price * item.qty)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between font-bold text-sm">
+                        <span>TOTAL</span>
+                        <span>{formatRp(receiptOrder.total)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>{receiptOrder.paymentMethod}</span>
+                        <span>{formatRp(receiptOrder.cashReceived)}</span>
+                      </div>
+                      {receiptOrder.paymentMethod === 'Tunai' && (
+                        <div className="flex justify-between">
+                          <span>Kembalian</span>
+                          <span>{formatRp(receiptOrder.changeAmount)}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {receiptOrder.orderNote && (
+                      <p className="text-[11px] pt-1 border-t border-dashed border-slate-300">
+                        Catatan: {receiptOrder.orderNote}
+                      </p>
+                    )}
+
+                    <p className="text-center text-[10px] pt-2">Terima kasih telah berkunjung!</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <button
+                      onClick={() => window.print()}
+                      className="py-2.5 rounded-xl bg-teal-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                    >
+                      <Icon name="printer" className="w-4 h-4" />
+                      <span>Cetak Struk</span>
+                    </button>
+                    <button
+                      onClick={() => setReceiptOrder(null)}
+                      className="py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                    >
+                      Selesai
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
