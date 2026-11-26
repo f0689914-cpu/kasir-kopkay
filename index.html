@@ -396,6 +396,9 @@
         const [menuItems, setMenuItems] = useState(() => loadStorage('kopkay_menu_v1', INITIAL_MENU_ITEMS));
         const [tables, setTables] = useState(() => loadStorage('kopkay_tables_v1', INITIAL_TABLES));
         const [orders, setOrders] = useState(() => loadStorage('kopkay_orders_v1', []));
+        const [openBills, setOpenBills] = useState(() => loadStorage('kopkay_open_bills_v1', []));
+        const [activeBillId, setActiveBillId] = useState(null);
+        const [billDrawerOpen, setBillDrawerOpen] = useState(false);
         const [shiftState, setShiftState] = useState(() =>
           loadStorage('kopkay_shift_v1', {
             isOpen: true,
@@ -569,6 +572,10 @@
         }, [orders]);
 
         useEffect(() => {
+          localStorage.setItem('kopkay_open_bills_v1', JSON.stringify(openBills));
+        }, [openBills]);
+
+        useEffect(() => {
           localStorage.setItem('kopkay_shift_v1', JSON.stringify(shiftState));
         }, [shiftState]);
 
@@ -727,8 +734,96 @@
           setCustomerName('');
           setOrderNote('');
           setCashReceived('');
+          if (activeBillId) {
+            setOpenBills((prev) => prev.filter((b) => b.id !== activeBillId));
+            setActiveBillId(null);
+          }
           setMobileCartOpen(false);
           setReceiptOrder(newOrder);
+        };
+
+        const handleSaveOpenBill = () => {
+          setErrorMsg('');
+          if (cart.length === 0) {
+            setErrorMsg('Keranjang masih kosong, pilih menu dulu sebelum menyimpan bill.');
+            return;
+          }
+          const resolvedLabel =
+            orderType === 'Dine-in'
+              ? `${tableName}${customerName.trim() ? ' - ' + customerName.trim() : ''}`
+              : customerName.trim() || `Takeaway (${cart.length} item)`;
+
+          if (activeBillId) {
+            setOpenBills((prev) =>
+              prev.map((b) =>
+                b.id === activeBillId
+                  ? {
+                      ...b,
+                      updatedAt: new Date().toISOString(),
+                      orderType,
+                      tableName: orderType === 'Dine-in' ? tableName : 'Takeaway',
+                      customerName: customerName.trim(),
+                      label: resolvedLabel,
+                      orderNote: orderNote.trim(),
+                      items: [...cart],
+                      total: subtotal,
+                    }
+                  : b
+              )
+            );
+          } else {
+            const newBill = {
+              id: 'BILL-' + String(Date.now()).slice(-6),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              orderType,
+              tableName: orderType === 'Dine-in' ? tableName : 'Takeaway',
+              customerName: customerName.trim(),
+              label: resolvedLabel,
+              orderNote: orderNote.trim(),
+              items: [...cart],
+              total: subtotal,
+            };
+            setOpenBills((prev) => [newBill, ...prev]);
+            setActiveBillId(newBill.id);
+          }
+
+          if (orderType === 'Dine-in') {
+            setTables((prev) =>
+              prev.map((t) =>
+                t.name === tableName
+                  ? { ...t, status: 'occupied', guestName: customerName.trim() || 'Bill Aktif' }
+                  : t
+              )
+            );
+          }
+
+          setCart([]);
+          setCustomerName('');
+          setOrderNote('');
+          setCashReceived('');
+          setActiveBillId(null);
+        };
+
+        const handleLoadOpenBill = (bill) => {
+          setErrorMsg('');
+          setCart(Array.isArray(bill.items) ? [...bill.items] : []);
+          setOrderType(bill.orderType || 'Dine-in');
+          if (bill.orderType !== 'Takeaway' && bill.tableName) {
+            setTableName(bill.tableName);
+          }
+          setCustomerName(bill.customerName || '');
+          setOrderNote(bill.orderNote || '');
+          setActiveBillId(bill.id);
+          setBillDrawerOpen(false);
+          setActiveTab('order');
+        };
+
+        const handleDeleteOpenBill = (billId) => {
+          setOpenBills((prev) => prev.filter((b) => b.id !== billId));
+          if (activeBillId === billId) {
+            setActiveBillId(null);
+          }
         };
 
         // Period filter helper (using local date YYYY-MM-DD)
@@ -899,15 +994,36 @@
 
         const renderCartPanel = () => (
           <div className="flex flex-col h-full bg-white dark:bg-slate-900">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
               <div>
-                <h3 className="font-bold text-base text-slate-900 dark:text-white">Current Order</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white">Current Order</h3>
+                  {activeBillId && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
+                      Edit {activeBillId}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-500">{totalCartQty} item dipilih</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBillDrawerOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs font-bold flex items-center gap-1"
+                >
+                  <span>Bill Aktif</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px]">
+                    {openBills.length}
+                  </span>
+                </button>
                 {cart.length > 0 && (
                   <button
-                    onClick={() => setCart([])}
+                    type="button"
+                    onClick={() => {
+                      setCart([]);
+                      setActiveBillId(null);
+                    }}
                     className="text-xs font-semibold text-rose-500 flex items-center gap-1"
                   >
                     <Icon name="trash" className="w-3.5 h-3.5" />
@@ -915,6 +1031,7 @@
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setMobileCartOpen(false)}
                   className="lg:hidden p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500"
                 >
@@ -1072,13 +1189,24 @@
                 <span className="text-xl font-extrabold text-slate-900 dark:text-white">{formatRp(subtotal)}</span>
               </div>
 
-              <button
-                onClick={handleCheckout}
-                disabled={cart.length === 0}
-                className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white font-bold text-sm shadow-sm"
-              >
-                Proses Pembayaran & Struk
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveOpenBill}
+                  disabled={cart.length === 0}
+                  className="w-full py-3 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white font-bold text-xs sm:text-sm shadow-sm"
+                >
+                  {activeBillId ? 'Update Bill Gantung' : 'Simpan Bill (Belum Bayar)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCheckout}
+                  disabled={cart.length === 0}
+                  className="w-full py-3 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white font-bold text-xs sm:text-sm shadow-sm"
+                >
+                  Proses Pembayaran & Struk
+                </button>
+              </div>
             </div>
           </div>
         );
@@ -2692,6 +2820,108 @@
                       </div>
                     </form>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Modal Bill Gantung / Riwayat Pembayaran Aktif */}
+            {billDrawerOpen && (
+              <div
+                onClick={() => setBillDrawerOpen(false)}
+                className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl max-w-md w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-3.5 max-h-[85vh] flex flex-col"
+                >
+                  <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800">
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                        Bill Gantung & Pembayaran Aktif
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Pesanan belum dibayar tersimpan di sini—klik Bayar / Lanjut untuk selesaikan
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBillDrawerOpen(false)}
+                      className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"
+                    >
+                      <Icon name="x" className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-2.5 pr-0.5">
+                    {openBills.length === 0 ? (
+                      <div className="py-10 text-center text-xs text-slate-400">
+                        Belum ada bill gantung yang aktif saat ini.
+                      </div>
+                    ) : (
+                      openBills.map((bill) => (
+                        <div
+                          key={bill.id}
+                          className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-extrabold text-slate-900 dark:text-white">
+                                  {bill.label}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300">
+                                  Belum Bayar
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400">
+                                {bill.id} •{' '}
+                                {new Date(bill.updatedAt || bill.createdAt).toLocaleTimeString('id-ID', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </p>
+                            </div>
+                            <span className="text-sm font-extrabold text-teal-600 dark:text-teal-400">
+                              {formatRp(bill.total)}
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] text-slate-600 dark:text-slate-300 border-t border-slate-200/70 dark:border-slate-700/70 pt-1.5 space-y-0.5">
+                            {(bill.items || []).map((it) => (
+                              <div key={it.id} className="flex justify-between">
+                                <span>
+                                  {it.qty}x {it.name}
+                                </span>
+                                <span>{formatRp(it.price * it.qty)}</span>
+                              </div>
+                            ))}
+                            {bill.orderNote && (
+                              <p className="text-[10px] text-amber-700 dark:text-amber-300 pt-0.5">
+                                Catatan: {bill.orderNote}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOpenBill(bill.id)}
+                              className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-xs font-bold"
+                            >
+                              Hapus
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleLoadOpenBill(bill)}
+                              className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                            >
+                              Lanjut & Bayar
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             )}
