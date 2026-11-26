@@ -432,6 +432,7 @@
         const [receiptOrder, setReceiptOrder] = useState(null);
         const [mobileCartOpen, setMobileCartOpen] = useState(false);
         const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
+        const [dashboardDetailModal, setDashboardDetailModal] = useState(null);
 
         const [zoneFilter, setZoneFilter] = useState('All');
         const [selectedTableId, setSelectedTableId] = useState('T01');
@@ -1001,6 +1002,59 @@
             net: acc.net + cur.netPayout,
           }),
           { qty: 0, gross: 0, commission: 0, net: 0 }
+        );
+
+        const todayOrders = useMemo(() => {
+          const todayKey = getLocalDateKey(new Date());
+          return orders.filter((o) => getLocalDateKey(o.createdAt) === todayKey);
+        }, [orders]);
+
+        const todaySummaryByTenant = useMemo(() => {
+          return tenants.map((tenant) => {
+            let grossSales = 0;
+            let totalQty = 0;
+            todayOrders.forEach((order) => {
+              order.items.forEach((item) => {
+                if (item.tenantId === tenant.id) {
+                  grossSales += item.price * item.qty;
+                  totalQty += item.qty;
+                }
+              });
+            });
+            const commissionCut = Math.round(grossSales * tenant.commissionRate);
+            return {
+              ...tenant,
+              totalQty,
+              grossSales,
+              commissionCut,
+              netPayout: grossSales - commissionCut,
+            };
+          });
+        }, [todayOrders, tenants]);
+
+        const todayShiftTotals = todaySummaryByTenant.reduce(
+          (acc, cur) => ({
+            qty: acc.qty + cur.totalQty,
+            gross: acc.gross + cur.grossSales,
+            commission: acc.commission + cur.commissionCut,
+            net: acc.net + cur.netPayout,
+          }),
+          { qty: 0, gross: 0, commission: 0, net: 0 }
+        );
+
+        const todayKopkayIncome =
+          todaySummaryByTenant
+            .filter((t) => t.id === 'kopkay')
+            .reduce((sum, t) => sum + t.grossSales, 0) + todayShiftTotals.commission;
+
+        const todayExpenses = useMemo(() => {
+          const todayKey = getLocalDateKey(new Date());
+          return expenses.filter((ex) => getLocalDateKey(ex.createdAt) === todayKey);
+        }, [expenses]);
+
+        const todayExpenseTotal = useMemo(
+          () => todayExpenses.reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0),
+          [todayExpenses]
         );
 
         const kopkayIncome =
@@ -1769,27 +1823,80 @@
 
                 {activeTab === 'dashboard' && (
                   <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
-                    <h2 className="text-lg font-bold">Ringkasan Penjualan Hari Ini</h2>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-lg font-bold">Ringkasan Penjualan Hari Ini</h2>
+                        <p className="text-xs text-slate-500">Klik salah satu kartu ringkasan untuk melihat rincian lengkapnya</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('report')}
+                        className="px-3 py-1.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs font-bold"
+                      >
+                        Buka Rekap Lengkap →
+                      </button>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">TOTAL OMZET KOTOR</p>
-                        <p className="text-2xl font-extrabold mt-1">{formatRp(shiftTotals.gross)}</p>
-                      </div>
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">PENDAPATAN BERSIH KOPKAY</p>
-                        <p className="text-2xl font-extrabold text-emerald-600 mt-1">{formatRp(kopkayIncome)}</p>
-                      </div>
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">KOMISI TENANT (10%)</p>
-                        <p className="text-2xl font-extrabold text-amber-600 mt-1">{formatRp(shiftTotals.commission)}</p>
-                      </div>
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">TOTAL PENGELUARAN</p>
-                        <p className="text-2xl font-extrabold text-rose-600 mt-1">{formatRp(totalExpensesAll)}</p>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Sisa Estimasi Kas: <strong className="text-slate-700 dark:text-slate-200">{formatRp(kopkayIncome - totalExpensesAll)}</strong>
+                      <button
+                        type="button"
+                        onClick={() => setDashboardDetailModal('gross')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-teal-500 dark:hover:border-teal-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">TOTAL OMZET KOTOR</p>
+                          <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold">{formatRp(todayShiftTotals.gross)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {todayOrders.length} transaksi • {todayShiftTotals.qty} item hari ini
                         </p>
-                      </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDashboardDetailModal('kopkay')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">PENDAPATAN BERSIH KOPKAY</p>
+                          <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-emerald-600">{formatRp(todayKopkayIncome)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          Menu Kopkay + komisi tenant 10%
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDashboardDetailModal('commission')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-amber-500 dark:hover:border-amber-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">KOMISI TENANT (10%)</p>
+                          <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-amber-600">{formatRp(todayShiftTotals.commission)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {todaySummaryByTenant.filter((t) => t.commissionRate > 0).length} tenant skema 10%
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDashboardDetailModal('expenses')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-rose-500 dark:hover:border-rose-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">TOTAL PENGELUARAN</p>
+                          <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-rose-600">{formatRp(todayExpenseTotal)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          Sisa Estimasi Kas: <strong className="text-slate-700 dark:text-slate-200">{formatRp(todayKopkayIncome - todayExpenseTotal)}</strong>
+                        </p>
+                      </button>
                     </div>
 
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
@@ -1826,6 +1933,191 @@
                         </div>
                       )}
                     </div>
+
+                    {dashboardDetailModal && (
+                      <div
+                        onClick={() => setDashboardDetailModal(null)}
+                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+                      >
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[85vh] flex flex-col"
+                        >
+                          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800">
+                            <div>
+                              <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                                {dashboardDetailModal === 'gross' && 'Rincian Total Omzet Kotor (Hari Ini)'}
+                                {dashboardDetailModal === 'kopkay' && 'Rincian Pendapatan Bersih Kopkay (Hari Ini)'}
+                                {dashboardDetailModal === 'commission' && 'Rincian Komisi & Daftar Tenant (10%)'}
+                                {dashboardDetailModal === 'expenses' && 'Rincian Pengeluaran & Estimasi Kas (Hari Ini)'}
+                              </h3>
+                              <p className="text-[11px] text-slate-500">
+                                {dashboardDetailModal === 'gross' && 'Omzet seluruh item terjual per tenant & metode bayar'}
+                                {dashboardDetailModal === 'kopkay' && 'Penjualan menu utama Kopkay + komisi potongan 10% dari tenant'}
+                                {dashboardDetailModal === 'commission' && 'Daftar tenant aktif, skema potongan (10% / 0%), omzet, & hak bersih'}
+                                {dashboardDetailModal === 'expenses' && 'Daftar pengeluaran hari ini beserta perhitungan sisa kas'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setDashboardDetailModal(null)}
+                              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"
+                            >
+                              <Icon name="x" className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto space-y-3 text-xs pr-0.5">
+                            {dashboardDetailModal === 'gross' && (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] text-slate-500">Tunai Hari Ini</p>
+                                    <p className="font-extrabold text-sm mt-0.5">
+                                      {formatRp(todayOrders.filter((o) => o.paymentMethod === 'Tunai').reduce((s, o) => s + (o.total || 0), 0))}
+                                    </p>
+                                  </div>
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] text-slate-500">QRIS / Non-Tunai</p>
+                                    <p className="font-extrabold text-sm mt-0.5">
+                                      {formatRp(todayOrders.filter((o) => o.paymentMethod !== 'Tunai').reduce((s, o) => s + (o.total || 0), 0))}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {todaySummaryByTenant.map((row) => (
+                                    <div key={row.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                                      <div>
+                                        <p className="font-bold text-slate-900 dark:text-white">{row.name}</p>
+                                        <p className="text-[11px] text-slate-400">{row.totalQty} item terjual</p>
+                                      </div>
+                                      <span className="font-extrabold text-teal-600 dark:text-teal-400">
+                                        {formatRp(row.grossSales)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+
+                            {dashboardDetailModal === 'kopkay' && (
+                              <div className="space-y-2.5">
+                                <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600 dark:text-slate-300">Omzet Menu Kopitiam Kopi & Kaya</span>
+                                    <span className="font-bold">
+                                      {formatRp(todaySummaryByTenant.find((t) => t.id === 'kopkay')?.grossSales || 0)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600 dark:text-slate-300">Komisi Potongan Tenant (10%)</span>
+                                    <span className="font-bold text-amber-600">
+                                      +{formatRp(todayShiftTotals.commission)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between pt-1.5 border-t border-emerald-200 dark:border-emerald-800 font-extrabold text-emerald-700 dark:text-emerald-300">
+                                    <span>Total Pendapatan Bersih Kopkay</span>
+                                    <span>{formatRp(todayKopkayIncome)}</span>
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-slate-500">
+                                  Catatan: Penjualan tenant mitra (seperti Lontong & Soto, Joice) disetorkan ke tenant setelah potongan komisi 10%, sedangkan Kamie Hainan memiliki skema 0% potongan.
+                                </p>
+                              </div>
+                            )}
+
+                            {dashboardDetailModal === 'commission' && (
+                              <div className="space-y-2">
+                                {todaySummaryByTenant.map((row) => {
+                                  const ratePct = Math.round((row.commissionRate || 0) * 100);
+                                  return (
+                                    <div key={row.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-slate-900 dark:text-white">{row.name}</span>
+                                          <span
+                                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                              ratePct > 0
+                                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                            }`}
+                                          >
+                                            Potongan {ratePct}%
+                                          </span>
+                                        </div>
+                                        <span className="font-extrabold text-amber-600">
+                                          Komisi: {formatRp(row.commissionCut)}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between text-[11px] text-slate-500">
+                                        <span>Omzet: {formatRp(row.grossSales)} ({row.totalQty} item)</span>
+                                        <span>Hak Bersih Tenant: <strong className="text-emerald-600">{formatRp(row.netPayout)}</strong></span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {dashboardDetailModal === 'expenses' && (
+                              <div className="space-y-2.5">
+                                <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 space-y-1">
+                                  <div className="flex justify-between">
+                                    <span>Pendapatan Bersih Kopkay Hari Ini</span>
+                                    <span className="font-bold">{formatRp(todayKopkayIncome)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-rose-600">
+                                    <span>Total Pengeluaran Hari Ini</span>
+                                    <span className="font-bold">-{formatRp(todayExpenseTotal)}</span>
+                                  </div>
+                                  <div className="flex justify-between pt-1 border-t border-rose-200 dark:border-rose-800 font-extrabold text-slate-900 dark:text-white">
+                                    <span>Sisa Estimasi Kas</span>
+                                    <span>{formatRp(todayKopkayIncome - todayExpenseTotal)}</span>
+                                  </div>
+                                </div>
+
+                                {todayExpenses.length === 0 ? (
+                                  <p className="text-center text-slate-400 py-4">Belum ada pengeluaran tercatat hari ini.</p>
+                                ) : (
+                                  <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
+                                    {todayExpenses.map((ex) => (
+                                      <div key={ex.id} className="py-2 flex items-center justify-between gap-2">
+                                        <div>
+                                          <p className="font-bold text-slate-900 dark:text-white">{ex.title}</p>
+                                          <p className="text-[11px] text-slate-400">{ex.category} • {ex.source}</p>
+                                        </div>
+                                        <span className="font-extrabold text-rose-600">-{formatRp(ex.amount)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const targetTab = dashboardDetailModal === 'expenses' ? 'expenses' : 'report';
+                                setDashboardDetailModal(null);
+                                setActiveTab(targetTab);
+                              }}
+                              className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                            >
+                              {dashboardDetailModal === 'expenses' ? 'Kelola Pengeluaran' : 'Lihat Rekap Produk & Shift'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDashboardDetailModal(null)}
+                              className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                            >
+                              Tutup
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
