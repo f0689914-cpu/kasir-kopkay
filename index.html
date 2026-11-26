@@ -1035,6 +1035,31 @@
               ? `${tableName}${customerName.trim() ? ' - ' + customerName.trim() : ''}`
               : customerName.trim() || `Takeaway (${cart.length} item)`;
 
+          const mergeCartItems = (baseItems, extraItems) => {
+            const map = new Map();
+            (baseItems || []).forEach((it) => {
+              map.set(it.id, { ...it });
+            });
+            (extraItems || []).forEach((it) => {
+              if (map.has(it.id)) {
+                const cur = map.get(it.id);
+                map.set(it.id, { ...cur, qty: cur.qty + it.qty });
+              } else {
+                map.set(it.id, { ...it });
+              }
+            });
+            return Array.from(map.values());
+          };
+
+          const existingTableBill =
+            !activeBillId && orderType === 'Dine-in'
+              ? openBills.find(
+                  (b) =>
+                    b.orderType === 'Dine-in' &&
+                    String(b.tableName || '').trim().toLowerCase() === String(tableName || '').trim().toLowerCase()
+                )
+              : null;
+
           if (activeBillId) {
             setOpenBills((prev) =>
               prev.map((b) =>
@@ -1049,6 +1074,27 @@
                       orderNote: orderNote.trim(),
                       items: [...cart],
                       total: subtotal,
+                    }
+                  : b
+              )
+            );
+          } else if (existingTableBill) {
+            const mergedItems = mergeCartItems(existingTableBill.items, cart);
+            const mergedTotal = mergedItems.reduce((sum, it) => sum + it.price * it.qty, 0);
+            const finalCustomer = customerName.trim() || existingTableBill.customerName || '';
+            const finalLabel = `${tableName}${finalCustomer ? ' - ' + finalCustomer : ''}`;
+            const combinedNote = [existingTableBill.orderNote, orderNote.trim()].filter(Boolean).join(' | ');
+            setOpenBills((prev) =>
+              prev.map((b) =>
+                b.id === existingTableBill.id
+                  ? {
+                      ...b,
+                      updatedAt: new Date().toISOString(),
+                      customerName: finalCustomer,
+                      label: finalLabel,
+                      orderNote: combinedNote,
+                      items: mergedItems,
+                      total: mergedTotal,
                     }
                   : b
               )
@@ -1104,11 +1150,152 @@
           setActiveTab('order');
         };
 
+        const [transferringBillId, setTransferringBillId] = useState(null);
+        const [transferTargetTable, setTransferTargetTable] = useState('');
+        const [mergingBillId, setMergingBillId] = useState(null);
+        const [mergeTargetBillId, setMergeTargetBillId] = useState('');
+
         const handleDeleteOpenBill = (billId) => {
-          setOpenBills((prev) => prev.filter((b) => b.id !== billId));
+          const target = openBills.find((b) => b.id === billId);
+          setOpenBills((prev) => {
+            const remaining = prev.filter((b) => b.id !== billId);
+            if (target && target.orderType === 'Dine-in' && target.tableName) {
+              const stillHasBill = remaining.some(
+                (b) => b.orderType === 'Dine-in' && b.tableName === target.tableName
+              );
+              if (!stillHasBill) {
+                setTables((tPrev) =>
+                  tPrev.map((t) =>
+                    t.name === target.tableName ? { ...t, status: 'available', guestName: '' } : t
+                  )
+                );
+              }
+            }
+            return remaining;
+          });
           if (activeBillId === billId) {
             setActiveBillId(null);
           }
+        };
+
+        const handleTransferBillTable = (billId, newTable) => {
+          if (!newTable) return;
+          const bill = openBills.find((b) => b.id === billId);
+          if (!bill) return;
+          const oldTable = bill.tableName;
+          const isTakeawayTarget = newTable === 'Takeaway';
+          const nextOrderType = isTakeawayTarget ? 'Takeaway' : 'Dine-in';
+          const nextLabel = isTakeawayTarget
+            ? bill.customerName || `Takeaway (${(bill.items || []).length} item)`
+            : `${newTable}${bill.customerName ? ' - ' + bill.customerName : ''}`;
+
+          setOpenBills((prev) => {
+            const updated = prev.map((b) =>
+              b.id === billId
+                ? {
+                    ...b,
+                    updatedAt: new Date().toISOString(),
+                    orderType: nextOrderType,
+                    tableName: newTable,
+                    label: nextLabel,
+                  }
+                : b
+            );
+            if (oldTable && oldTable !== 'Takeaway' && oldTable !== newTable) {
+              const oldStillOccupied = updated.some(
+                (b) => b.orderType === 'Dine-in' && b.tableName === oldTable
+              );
+              if (!oldStillOccupied) {
+                setTables((tPrev) =>
+                  tPrev.map((t) =>
+                    t.name === oldTable ? { ...t, status: 'available', guestName: '' } : t
+                  )
+                );
+              }
+            }
+            if (!isTakeawayTarget) {
+              setTables((tPrev) =>
+                tPrev.map((t) =>
+                  t.name === newTable
+                    ? { ...t, status: 'occupied', guestName: bill.customerName || 'Bill Aktif' }
+                    : t
+                )
+              );
+            }
+            return updated;
+          });
+
+          if (activeBillId === billId) {
+            setOrderType(nextOrderType);
+            if (!isTakeawayTarget) setTableName(newTable);
+          }
+          setTransferringBillId(null);
+          setTransferTargetTable('');
+        };
+
+        const handleMergeOpenBills = (sourceBillId, targetBillId) => {
+          if (!sourceBillId || !targetBillId || sourceBillId === targetBillId) return;
+          const source = openBills.find((b) => b.id === sourceBillId);
+          const target = openBills.find((b) => b.id === targetBillId);
+          if (!source || !target) return;
+
+          const itemMap = new Map();
+          (target.items || []).forEach((it) => itemMap.set(it.id, { ...it }));
+          (source.items || []).forEach((it) => {
+            if (itemMap.has(it.id)) {
+              const cur = itemMap.get(it.id);
+              itemMap.set(it.id, { ...cur, qty: cur.qty + it.qty });
+            } else {
+              itemMap.set(it.id, { ...it });
+            }
+          });
+          const mergedItems = Array.from(itemMap.values());
+          const mergedTotal = mergedItems.reduce((sum, it) => sum + it.price * it.qty, 0);
+          const mergedCustomer = target.customerName || source.customerName || '';
+          const mergedLabel =
+            target.orderType === 'Dine-in'
+              ? `${target.tableName}${mergedCustomer ? ' - ' + mergedCustomer : ''}`
+              : mergedCustomer || `Takeaway (${mergedItems.length} item)`;
+          const mergedNote = [target.orderNote, source.orderNote].filter(Boolean).join(' | ');
+
+          setOpenBills((prev) => {
+            const next = prev
+              .filter((b) => b.id !== sourceBillId)
+              .map((b) =>
+                b.id === targetBillId
+                  ? {
+                      ...b,
+                      updatedAt: new Date().toISOString(),
+                      customerName: mergedCustomer,
+                      label: mergedLabel,
+                      orderNote: mergedNote,
+                      items: mergedItems,
+                      total: mergedTotal,
+                    }
+                  : b
+              );
+
+            if (source.orderType === 'Dine-in' && source.tableName && source.tableName !== target.tableName) {
+              const stillHasBill = next.some(
+                (b) => b.orderType === 'Dine-in' && b.tableName === source.tableName
+              );
+              if (!stillHasBill) {
+                setTables((tPrev) =>
+                  tPrev.map((t) =>
+                    t.name === source.tableName ? { ...t, status: 'available', guestName: '' } : t
+                  )
+                );
+              }
+            }
+            return next;
+          });
+
+          if (activeBillId === sourceBillId) {
+            setActiveBillId(null);
+            setCart([]);
+          }
+          setMergingBillId(null);
+          setMergeTargetBillId('');
         };
 
         const getLocalDateKey = (isoOrDate) => {
@@ -1488,6 +1675,33 @@
                   </button>
                 ))}
               </div>
+              {orderType === 'Dine-in' &&
+                !activeBillId &&
+                openBills.some(
+                  (b) =>
+                    b.orderType === 'Dine-in' &&
+                    String(b.tableName || '').trim().toLowerCase() === String(tableName || '').trim().toLowerCase()
+                ) && (
+                  <div className="px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
+                    <span>
+                      <strong>{tableName}</strong> punya bill aktif — simpan akan otomatis digabung.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const existing = openBills.find(
+                          (b) =>
+                            b.orderType === 'Dine-in' &&
+                            String(b.tableName || '').trim().toLowerCase() === String(tableName || '').trim().toLowerCase()
+                        );
+                        if (existing) handleLoadOpenBill(existing);
+                      }}
+                      className="font-extrabold underline shrink-0"
+                    >
+                      Buka Bill
+                    </button>
+                  </div>
+                )}
               <div className="grid grid-cols-2 gap-2">
                 {orderType === 'Dine-in' && (
                   <select
@@ -4133,20 +4347,133 @@
                             )}
                           </div>
 
-                          <div className="flex items-center justify-end gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteOpenBill(bill.id)}
-                              className="px-2.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-xs font-bold"
-                            >
-                              Hapus
-                            </button>
+                          {transferringBillId === bill.id && (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-teal-300 dark:border-teal-800 space-y-2">
+                              <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                                Pindahkan {bill.label} ke:
+                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={transferTargetTable}
+                                  onChange={(e) => setTransferTargetTable(e.target.value)}
+                                  className="flex-1 px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                                >
+                                  <option value="">-- Pilih Meja Tujuan --</option>
+                                  {tables
+                                    .filter((t) => t.name !== bill.tableName)
+                                    .map((t) => (
+                                      <option key={t.id} value={t.name}>
+                                        {t.name} ({t.zone})
+                                      </option>
+                                    ))}
+                                  {bill.orderType !== 'Takeaway' && (
+                                    <option value="Takeaway">Ubah ke Takeaway</option>
+                                  )}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={!transferTargetTable}
+                                  onClick={() => handleTransferBillTable(bill.id, transferTargetTable)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-teal-600 disabled:opacity-40 text-white text-xs font-bold"
+                                >
+                                  Pindah
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTransferringBillId(null);
+                                    setTransferTargetTable('');
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs font-semibold"
+                                >
+                                  Batal
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {mergingBillId === bill.id && (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 space-y-2">
+                              <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                                Gabungkan item bill ini ke bill tujuan:
+                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={mergeTargetBillId}
+                                  onChange={(e) => setMergeTargetBillId(e.target.value)}
+                                  className="flex-1 px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                                >
+                                  <option value="">-- Pilih Bill Tujuan --</option>
+                                  {openBills
+                                    .filter((other) => other.id !== bill.id)
+                                    .map((other) => (
+                                      <option key={other.id} value={other.id}>
+                                        {other.label} ({formatRp(other.total)})
+                                      </option>
+                                    ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={!mergeTargetBillId}
+                                  onClick={() => handleMergeOpenBills(bill.id, mergeTargetBillId)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-amber-500 disabled:opacity-40 text-white text-xs font-bold"
+                                >
+                                  Gabung
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMergingBillId(null);
+                                    setMergeTargetBillId('');
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-xs font-semibold"
+                                >
+                                  Batal
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1">
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOpenBill(bill.id)}
+                                className="px-2 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-[11px] font-bold"
+                              >
+                                Hapus
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMergingBillId(null);
+                                  setTransferringBillId(transferringBillId === bill.id ? null : bill.id);
+                                  setTransferTargetTable('');
+                                }}
+                                className="px-2 py-1.5 rounded-xl bg-slate-200/80 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[11px] font-bold"
+                              >
+                                Pindah Meja
+                              </button>
+                              {openBills.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTransferringBillId(null);
+                                    setMergingBillId(mergingBillId === bill.id ? null : bill.id);
+                                    setMergeTargetBillId('');
+                                  }}
+                                  className="px-2 py-1.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[11px] font-bold"
+                                >
+                                  Gabung Bill
+                                </button>
+                              )}
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleLoadOpenBill(bill)}
-                              className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
                             >
-                              Lanjut & Bayar
+                              Tambah / Bayar
                             </button>
                           </div>
                         </div>
