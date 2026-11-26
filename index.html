@@ -401,6 +401,7 @@
         const [billDrawerOpen, setBillDrawerOpen] = useState(false);
         const [shiftState, setShiftState] = useState(() =>
           loadStorage('kopkay_shift_v1', {
+            shiftId: 'SHF-' + String(Date.now()).slice(-6),
             isOpen: true,
             openedAt: new Date().toISOString(),
             openingCash: 0,
@@ -700,6 +701,7 @@
         const handleOpenShiftSubmit = (e) => {
           e.preventDefault();
           setShiftState({
+            shiftId: 'SHF-' + String(Date.now()).slice(-6),
             isOpen: true,
             openedAt: new Date().toISOString(),
             openingCash: Number(openCashInput) || 0,
@@ -722,6 +724,7 @@
         const expectedDrawerCash = (Number(shiftState?.openingCash) || 0) + cashSalesTotal;
 
         const filteredExpenses = useMemo(() => {
+          if (expensePeriod === 'active_shift') return expenses.filter((ex) => !ex.closedAt);
           if (expensePeriod === 'all') return expenses;
           const nowDate = new Date();
           const todayKey = getLocalDateKey(nowDate);
@@ -743,14 +746,17 @@
           [filteredExpenses]
         );
 
+        const activeShiftExpenses = useMemo(
+          () => expenses.filter((ex) => !ex.closedAt),
+          [expenses]
+        );
+
         const cashExpensesFromDrawer = useMemo(
           () =>
-            orders.length >= 0
-              ? expenses
-                  .filter((ex) => ex.source === 'Kas Tunai')
-                  .reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0)
-              : 0,
-          [expenses, orders]
+            activeShiftExpenses
+              .filter((ex) => ex.source === 'Kas Tunai')
+              .reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0),
+          [activeShiftExpenses]
         );
 
         const netDrawerCashAfterExpenses = expectedDrawerCash - cashExpensesFromDrawer;
@@ -761,6 +767,7 @@
           if (!expenseTitle.trim() || !amt || amt <= 0) return;
           const newEx = {
             id: 'EXP-' + String(Date.now()).slice(-6),
+            shiftId: shiftState?.shiftId || 'default',
             createdAt: new Date().toISOString(),
             title: expenseTitle.trim(),
             amount: amt,
@@ -782,10 +789,17 @@
           e.preventDefault();
           const actualCash = closingActualCashInput === '' ? expectedDrawerCash : Number(closingActualCashInput) || 0;
           const variance = actualCash - expectedDrawerCash;
+          const activeShfId = shiftState?.shiftId;
+          const closedTimestamp = new Date().toISOString();
+          const closingId = 'CLS-' + String(Date.now()).slice(-6);
+          const currentShiftExpenseTotal = expenses
+            .filter((ex) => !ex.closedAt)
+            .reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0);
           const closingRecord = {
-            id: 'CLS-' + String(Date.now()).slice(-6),
+            id: closingId,
+            shiftId: activeShfId || 'SHF-LEGACY',
             openedAt: shiftState.openedAt,
-            closedAt: new Date().toISOString(),
+            closedAt: closedTimestamp,
             cashierName: shiftState.cashierName || 'Kasir KOPKAY',
             openingCash: Number(shiftState.openingCash) || 0,
             cashSales: cashSalesTotal,
@@ -793,14 +807,27 @@
             grossSales: shiftTotals.gross,
             commissionCut: shiftTotals.commission,
             kopkayNet: kopkayIncome,
-            expectedDrawerCash,
+            expenseTotal: currentShiftExpenseTotal,
+            expectedDrawerCash: netDrawerCashAfterExpenses,
             actualCash,
-            variance,
+            variance: actualCash - netDrawerCashAfterExpenses,
             totalOrders: orders.length,
             note: closingNoteInput.trim(),
           };
           setClosedShifts((prev) => [closingRecord, ...prev]);
-          setOrders([]);
+          setOrders((prev) => prev.filter((o) => activeShfId && o.shiftId && o.shiftId !== activeShfId));
+          setExpenses((prev) =>
+            prev.map((ex) =>
+              !ex.closedAt
+                ? {
+                    ...ex,
+                    closedAt: closedTimestamp,
+                    closedShiftId: closingId,
+                    shiftId: ex.shiftId || activeShfId || 'SHF-LEGACY',
+                  }
+                : ex
+            )
+          );
           setShiftState((prev) => ({
             ...prev,
             isOpen: false,
@@ -883,6 +910,7 @@
 
           const newOrder = {
             id: 'ORD-' + String(Date.now()).slice(-6),
+            shiftId: shiftState?.shiftId || 'default',
             createdAt: new Date().toISOString(),
             orderType,
             tableName: orderType === 'Dine-in' ? tableName : 'Takeaway',
@@ -1153,7 +1181,7 @@
 
         const todayExpenses = useMemo(() => {
           const todayKey = getLocalDateKey(new Date());
-          return expenses.filter((ex) => getLocalDateKey(ex.createdAt) === todayKey);
+          return expenses.filter((ex) => !ex.closedAt && getLocalDateKey(ex.createdAt) === todayKey);
         }, [expenses]);
 
         const todayExpenseTotal = useMemo(
@@ -1249,6 +1277,7 @@
           setExpenses((prev) => [
             {
               id: 'EXP-' + String(Date.now()).slice(-6),
+              shiftId: shiftState?.shiftId || 'default',
               createdAt: new Date().toISOString(),
               title: `Setor ${pphConfig.label || 'PPh Usaha'} (${periodText})`,
               amount: amt,
@@ -2734,7 +2763,8 @@
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap gap-1.5">
                           {[
-                            { id: 'all', label: 'Semua' },
+                            { id: 'active_shift', label: 'Shift Aktif' },
+                            { id: 'all', label: 'Semua Riwayat' },
                             { id: 'today', label: 'Hari Ini' },
                             { id: '7d', label: '7 Hari' },
                             { id: '30d', label: '30 Hari / Bulanan' },
@@ -2784,6 +2814,15 @@
                                   </span>
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                                     {ex.source}
+                                  </span>
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                      ex.closedAt
+                                        ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                    }`}
+                                  >
+                                    {ex.closedAt ? `Closed (${ex.closedShiftId || 'Shift Lama'})` : 'Shift Aktif'}
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-slate-400 mt-0.5">
