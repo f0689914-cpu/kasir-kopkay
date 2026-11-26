@@ -349,18 +349,18 @@
       ];
 
       const INITIAL_TABLES = [
-        { id: 'T01', name: 'Meja 01', zone: 'Indoor', capacity: 4, status: 'available', guestName: '' },
-        { id: 'T02', name: 'Meja 02', zone: 'Indoor', capacity: 4, status: 'occupied', guestName: 'Meja 02 - Dine In' },
-        { id: 'T03', name: 'Meja 03', zone: 'Indoor', capacity: 2, status: 'available', guestName: '' },
-        { id: 'T04', name: 'Meja 04', zone: 'Indoor', capacity: 4, status: 'available', guestName: '' },
-        { id: 'T05', name: 'Meja 05', zone: 'Indoor', capacity: 6, status: 'reserved', guestName: 'Reservasi Jam 19:00' },
-        { id: 'T06', name: 'Meja 06', zone: 'Indoor', capacity: 4, status: 'available', guestName: '' },
-        { id: 'T07', name: 'Outdoor 01', zone: 'Outdoor', capacity: 4, status: 'occupied', guestName: 'Pelanggan Sore' },
-        { id: 'T08', name: 'Outdoor 02', zone: 'Outdoor', capacity: 4, status: 'available', guestName: '' },
-        { id: 'T09', name: 'Outdoor 03', zone: 'Outdoor', capacity: 2, status: 'cleaning', guestName: '' },
-        { id: 'T10', name: 'Outdoor 04', zone: 'Outdoor', capacity: 4, status: 'available', guestName: '' },
-        { id: 'T11', name: 'VIP Room A', zone: 'VIP', capacity: 8, status: 'available', guestName: '' },
-        { id: 'T12', name: 'VIP Room B', zone: 'VIP', capacity: 6, status: 'reserved', guestName: 'Meeting Keluarga' },
+        { id: 'T01', name: 'Meja 01', zone: 'Indoor', capacity: 4, guestName: '' },
+        { id: 'T02', name: 'Meja 02', zone: 'Indoor', capacity: 4, guestName: '' },
+        { id: 'T03', name: 'Meja 03', zone: 'Indoor', capacity: 2, guestName: '' },
+        { id: 'T04', name: 'Meja 04', zone: 'Indoor', capacity: 4, guestName: '' },
+        { id: 'T05', name: 'Meja 05', zone: 'Indoor', capacity: 6, guestName: '' },
+        { id: 'T06', name: 'Meja 06', zone: 'Indoor', capacity: 4, guestName: '' },
+        { id: 'T07', name: 'Outdoor 01', zone: 'Outdoor', capacity: 4, guestName: '' },
+        { id: 'T08', name: 'Outdoor 02', zone: 'Outdoor', capacity: 4, guestName: '' },
+        { id: 'T09', name: 'Outdoor 03', zone: 'Outdoor', capacity: 2, guestName: '' },
+        { id: 'T10', name: 'Outdoor 04', zone: 'Outdoor', capacity: 4, guestName: '' },
+        { id: 'T11', name: 'VIP Room A', zone: 'VIP', capacity: 8, guestName: '' },
+        { id: 'T12', name: 'VIP Room B', zone: 'VIP', capacity: 6, guestName: '' },
       ];
 
       const formatRp = (val) => 'Rp ' + Number(val || 0).toLocaleString('id-ID');
@@ -436,6 +436,7 @@
         const [zoneFilter, setZoneFilter] = useState('All');
         const [selectedTableId, setSelectedTableId] = useState('T01');
         const [newTableName, setNewTableName] = useState('');
+        const [showAddTableBox, setShowAddTableBox] = useState(false);
         const [newTableZone, setNewTableZone] = useState('Indoor');
         const [newTableCap, setNewTableCap] = useState(4);
 
@@ -1052,12 +1053,7 @@
           ...secondaryNavItems.filter((item) => !item.requiresAdmin || role === 'Admin'),
         ];
 
-        const statusStyles = {
-          available: { label: 'Kosong', border: 'border-emerald-500/70 bg-emerald-50/40 dark:bg-emerald-950/20', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300' },
-          occupied: { label: 'Terisi', border: 'border-amber-500/70 bg-amber-50/40 dark:bg-amber-950/20', badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300' },
-          reserved: { label: 'Reservasi', border: 'border-sky-500/70 bg-sky-50/40 dark:bg-sky-950/20', badge: 'bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-300' },
-          cleaning: { label: 'Bersihkan', border: 'border-rose-500/70 bg-rose-50/40 dark:bg-rose-950/20', badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-300' },
-        };
+
 
         const selectedTable = tables.find((t) => t.id === selectedTableId) || tables[0];
 
@@ -1637,156 +1633,134 @@
                 )}
 
                 {activeTab === 'tables' && (
-                  <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-                    <div className="flex-1 p-4 lg:p-6 overflow-y-auto">
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                        <h2 className="text-lg font-bold">Floor Plan Meja</h2>
-                        <div className="flex gap-1.5">
-                          {['All', 'Indoor', 'Outdoor', 'VIP'].map((z) => (
-                            <button
-                              key={z}
-                              onClick={() => setZoneFilter(z)}
-                              className={`px-3 py-1 rounded-xl text-xs font-semibold ${
-                                zoneFilter === z
-                                  ? 'bg-teal-600 text-white'
-                                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
-                              }`}
-                            >
-                              {z}
-                            </button>
-                          ))}
-                        </div>
+                  <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-lg font-bold">Pilih Meja Pesanan</h2>
+                        <p className="text-xs text-slate-500">Klik meja untuk langsung masuk ke pemesanan</p>
                       </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-                        {(zoneFilter === 'All' ? tables : tables.filter((t) => t.zone === zoneFilter)).map((t) => {
-                          const st = statusStyles[t.status] || statusStyles.available;
-                          return (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedTableId(t.id);
-                                setOrderType('Dine-in');
-                                setTableName(t.name);
-                                if (t.guestName && !customerName) {
-                                  setCustomerName(t.guestName);
-                                }
-                                setErrorMsg('');
-                                setActiveTab('order');
-                              }}
-                              className={`p-3.5 rounded-2xl border-2 text-left active:scale-[0.98] transition ${st.border} ${
-                                t.id === selectedTable?.id ? 'ring-2 ring-teal-500' : ''
-                              }`}
-                            >
-                              <div className="flex items-center justify-between mb-1.5">
-                                <span className="text-[11px] font-semibold text-slate-500">{t.zone}</span>
-                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${st.badge}`}>
-                                  {st.label}
-                                </span>
-                              </div>
-                              <p className="font-bold text-sm">{t.name}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">{t.capacity} kursi • Klik pesan</p>
-                              {t.guestName && <p className="mt-1.5 text-xs font-medium truncate">{t.guestName}</p>}
-                            </button>
-                          );
-                        })}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {['All', 'Indoor', 'Outdoor', 'VIP'].map((z) => (
+                          <button
+                            key={z}
+                            type="button"
+                            onClick={() => setZoneFilter(z)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${
+                              zoneFilter === z
+                                ? 'bg-teal-600 text-white'
+                                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            {z}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setShowAddTableBox((v) => !v)}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white dark:bg-teal-600"
+                        >
+                          {showAddTableBox ? 'Tutup Form' : '+ Meja'}
+                        </button>
                       </div>
                     </div>
 
-                    <div className="w-full lg:w-80 shrink-0 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4">
-                      {selectedTable && (
-                        <div className="space-y-3">
-                          <h3 className="font-bold text-base">
-                            {selectedTable.name} ({selectedTable.zone})
-                          </h3>
-                          <div className="grid grid-cols-2 gap-2">
-                            {Object.entries(statusStyles).map(([key, val]) => (
-                              <button
-                                key={key}
-                                onClick={() =>
-                                  setTables((prev) =>
-                                    prev.map((tb) =>
-                                      tb.id === selectedTable.id
-                                        ? { ...tb, status: key, guestName: key === 'available' ? '' : tb.guestName }
-                                        : tb
-                                    )
-                                  )
-                                }
-                                className={`py-2 rounded-xl text-xs font-semibold border ${
-                                  selectedTable.status === key
-                                    ? 'bg-teal-600 text-white border-teal-600'
-                                    : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                                }`}
-                              >
-                                {val.label}
-                              </button>
-                            ))}
-                          </div>
-                          <input
-                            type="text"
-                            value={selectedTable.guestName}
-                            onChange={(e) =>
-                              setTables((prev) =>
-                                prev.map((tb) =>
-                                  tb.id === selectedTable.id ? { ...tb, guestName: e.target.value } : tb
-                                )
-                              )
-                            }
-                            placeholder="Catatan tamu / reservasi..."
-                            className="w-full px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-                          />
-                        </div>
-                      )}
-
+                    {showAddTableBox && (
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
                           if (!newTableName.trim()) return;
-                          setTables((prev) => [
-                            ...prev,
-                            {
-                              id: 'T-' + Date.now(),
-                              name: newTableName.trim(),
-                              zone: newTableZone,
-                              capacity: Number(newTableCap) || 4,
-                              status: 'available',
-                              guestName: '',
-                            },
-                          ]);
+                          const created = {
+                            id: 'T-' + Date.now(),
+                            name: newTableName.trim(),
+                            zone: newTableZone,
+                            capacity: Number(newTableCap) || 4,
+                            guestName: '',
+                          };
+                          setTables((prev) => [...prev, created]);
                           setNewTableName('');
+                          setShowAddTableBox(false);
                         }}
-                        className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2"
+                        className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 grid grid-cols-1 sm:grid-cols-4 gap-2"
                       >
-                        <p className="text-xs font-bold">Tambah Meja Baru</p>
                         <input
                           type="text"
                           value={newTableName}
                           onChange={(e) => setNewTableName(e.target.value)}
-                          placeholder="Nama meja..."
-                          className="w-full px-3 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                          placeholder="Nama meja baru..."
+                          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
                         />
-                        <div className="grid grid-cols-2 gap-2">
-                          <select
-                            value={newTableZone}
-                            onChange={(e) => setNewTableZone(e.target.value)}
-                            className="px-2 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-                          >
-                            <option value="Indoor">Indoor</option>
-                            <option value="Outdoor">Outdoor</option>
-                            <option value="VIP">VIP</option>
-                          </select>
-                          <input
-                            type="number"
-                            value={newTableCap}
-                            onChange={(e) => setNewTableCap(e.target.value)}
-                            className="px-2 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-                          />
-                        </div>
-                        <button type="submit" className="w-full py-2 rounded-xl bg-teal-600 text-white text-xs font-bold">
+                        <select
+                          value={newTableZone}
+                          onChange={(e) => setNewTableZone(e.target.value)}
+                          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                        >
+                          <option value="Indoor">Indoor</option>
+                          <option value="Outdoor">Outdoor</option>
+                          <option value="VIP">VIP</option>
+                        </select>
+                        <input
+                          type="number"
+                          value={newTableCap}
+                          onChange={(e) => setNewTableCap(e.target.value)}
+                          placeholder="Kapasitas kursi"
+                          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                        />
+                        <button type="submit" className="py-2 px-3 rounded-xl bg-teal-600 text-white text-xs font-bold">
                           Simpan Meja
                         </button>
                       </form>
+                    )}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {(zoneFilter === 'All' ? tables : tables.filter((t) => t.zone === zoneFilter)).map((t) => (
+                        <div
+                          key={t.id}
+                          className={`p-3.5 rounded-2xl border bg-white dark:bg-slate-900 flex flex-col justify-between gap-2.5 ${
+                            t.id === selectedTable?.id
+                              ? 'border-teal-600 ring-2 ring-teal-500/30'
+                              : 'border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTableId(t.id);
+                              setOrderType('Dine-in');
+                              setTableName(t.name);
+                              if (t.guestName) {
+                                setCustomerName(t.guestName);
+                              }
+                              setErrorMsg('');
+                              setActiveTab('order');
+                            }}
+                            className="text-left active:scale-[0.99] transition"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <span className="text-[11px] font-semibold text-slate-500">{t.zone}</span>
+                              <span className="text-[11px] font-semibold text-slate-400">{t.capacity} kursi</span>
+                            </div>
+                            <p className="font-bold text-sm text-slate-900 dark:text-white">{t.name}</p>
+                            <p className="text-[11px] font-semibold text-teal-600 dark:text-teal-400 mt-1">
+                              Klik langsung pesan →
+                            </p>
+                          </button>
+
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={t.guestName || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setTables((prev) =>
+                                  prev.map((tb) => (tb.id === t.id ? { ...tb, guestName: val } : tb))
+                                );
+                              }}
+                              placeholder="Nama / catatan tamu..."
+                              className="w-full px-2.5 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
