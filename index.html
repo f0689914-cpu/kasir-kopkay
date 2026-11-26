@@ -251,9 +251,9 @@
         );
       };
 
-      const TENANTS = [
+      const INITIAL_TENANTS = [
         { id: 'kopkay', name: 'Kopitiam Kopi & Kaya', ownerType: 'internal', commissionRate: 0 },
-        { id: 'kamie', name: 'Kamie Hainan', ownerType: 'tenant', commissionRate: 0.1 },
+        { id: 'kamie', name: 'Kamie Hainan', ownerType: 'internal', commissionRate: 0 },
         { id: 'lontong-soto', name: 'Lontong & Soto', ownerType: 'tenant', commissionRate: 0.1 },
         { id: 'joice', name: 'Joice', ownerType: 'tenant', commissionRate: 0.1 },
       ];
@@ -314,7 +314,7 @@
         { id: 'kk-46', name: 'Madu Sereh Jahe', price: 22000, category: 'Herbal Drink', tenantId: 'kopkay', available: true, desc: 'Minuman herbal hangat kombinasi madu, sereh, dan jahe' },
         { id: 'kk-47', name: 'Nipis Madu Sereh', price: 22000, category: 'Herbal Drink', tenantId: 'kopkay', available: true, desc: 'Minuman herbal segar jeruk nipis, madu, dan sereh' },
 
-        // TENANT 2: KAMIE HAINAN (Komisi 10%)
+        // INTERNAL: KAMIE HAINAN (0% / Bukan Tenant)
         { id: 'km-01', name: 'Kamie Ayam Jamur', price: 25000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie lembut dipadu ayam juicy dan jamur segar dalam kuah kaldu' },
         { id: 'km-02', name: 'Kamie Original', price: 22000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie lembut, kuah gurih, daging ayam, sayuran segar, dan bawang goreng' },
         { id: 'km-03', name: 'Kamie Yamin', price: 25000, category: 'Mie & Utama', tenantId: 'kamie', available: true, desc: 'Mie kuning lembut dengan saus manis gurih Yamin, daging ayam, dan sayur' },
@@ -379,8 +379,20 @@
       function App() {
         const [darkMode, setDarkMode] = useState(() => loadStorage('kopkay_dark_v1', false));
         const [role, setRole] = useState(() => loadStorage('kopkay_role_v1', 'Cashier'));
+        const [adminPin, setAdminPin] = useState(() => String(loadStorage('kopkay_admin_pin_v1', '16062024')));
+        const [pinModalOpen, setPinModalOpen] = useState(false);
+        const [pinInput, setPinInput] = useState('');
+        const [pinError, setPinError] = useState('');
+        const [pendingAdminAction, setPendingAdminAction] = useState(null); // { type: 'switch_role' | 'open_menu_admin' }
+        const [newPinValue, setNewPinValue] = useState('');
+        const [pinSavedNotice, setPinSavedNotice] = useState('');
+        const [btDeviceName, setBtDeviceName] = useState('');
+        const [btStatusMsg, setBtStatusMsg] = useState('');
+        const [btPrinting, setBtPrinting] = useState(false);
+        const btDeviceRef = useRef(null);
         const [activeTab, setActiveTab] = useState('order');
 
+        const [tenants, setTenants] = useState(() => loadStorage('kopkay_tenants_v1', INITIAL_TENANTS));
         const [menuItems, setMenuItems] = useState(() => loadStorage('kopkay_menu_v1', INITIAL_MENU_ITEMS));
         const [tables, setTables] = useState(() => loadStorage('kopkay_tables_v1', INITIAL_TABLES));
         const [orders, setOrders] = useState(() => loadStorage('kopkay_orders_v1', []));
@@ -419,7 +431,20 @@
         const [newMenuPrice, setNewMenuPrice] = useState('');
         const [newMenuTenant, setNewMenuTenant] = useState('kopkay');
         const [newMenuCat, setNewMenuCat] = useState('Makanan Utama');
+        const [newTenantName, setNewTenantName] = useState('');
+        const [newTenantType, setNewTenantType] = useState('tenant');
+        const [editingTenantId, setEditingTenantId] = useState(null);
+        const [editTenantName, setEditTenantName] = useState('');
+        const [editTenantType, setEditTenantType] = useState('tenant');
+        const [editingMenuId, setEditingMenuId] = useState(null);
+        const [editMenuName, setEditMenuName] = useState('');
+        const [editMenuPrice, setEditMenuPrice] = useState('');
+        const [editMenuTenant, setEditMenuTenant] = useState('kopkay');
+        const [editMenuCat, setEditMenuCat] = useState('Makanan Utama');
         const fileInputRef = useRef(null);
+        const [reportPeriod, setReportPeriod] = useState('all'); // 'today', 'yesterday', '7d', '30d', 'all'
+        const [reportTenantFilter, setReportTenantFilter] = useState('all');
+        const [reportProductSearch, setReportProductSearch] = useState('');
 
         useEffect(() => {
           const handleBeforeInstall = (e) => {
@@ -454,6 +479,66 @@
           localStorage.setItem('kopkay_role_v1', JSON.stringify(role));
           if (role !== 'Admin' && activeTab === 'menu-admin') setActiveTab('order');
         }, [role, activeTab]);
+
+        useEffect(() => {
+          localStorage.setItem('kopkay_admin_pin_v1', JSON.stringify(adminPin));
+        }, [adminPin]);
+
+        const requestAdminAccess = (action = { type: 'switch_role' }) => {
+          setPinInput('');
+          setPinError('');
+          setPendingAdminAction(action);
+          setPinModalOpen(true);
+        };
+
+        const handleVerifyAdminPin = (e) => {
+          e.preventDefault();
+          if (pinInput.trim() === String(adminPin).trim()) {
+            setRole('Admin');
+            if (pendingAdminAction?.type === 'open_menu_admin') {
+              setActiveTab('menu-admin');
+            }
+            setPinModalOpen(false);
+            setPinInput('');
+            setPinError('');
+            setPendingAdminAction(null);
+          } else {
+            setPinError('PIN Admin salah. Silakan coba lagi.');
+          }
+        };
+
+        const handleSaveNewPin = (e) => {
+          e.preventDefault();
+          const cleaned = newPinValue.trim();
+          if (cleaned.length < 4) {
+            setPinSavedNotice('PIN minimal 4 karakter.');
+            return;
+          }
+          setAdminPin(cleaned);
+          setNewPinValue('');
+          setPinSavedNotice('PIN Admin berhasil diperbarui.');
+          setTimeout(() => setPinSavedNotice(''), 3000);
+        };
+
+        const handlePrintBluetooth = async (order) => {
+          if (!order || btPrinting) return;
+          setBtPrinting(true);
+          setBtStatusMsg('');
+          try {
+            const raw = encodeEscPosReceipt(order, getTenantName);
+            const devName = await sendRawToBluetoothPrinter(raw, btDeviceRef);
+            setBtDeviceName(devName);
+            setBtStatusMsg(`Struk terkirim ke ${devName}`);
+          } catch (err) {
+            setBtStatusMsg(err?.message || 'Gagal mencetak lewat Bluetooth.');
+          } finally {
+            setBtPrinting(false);
+          }
+        };
+
+        useEffect(() => {
+          localStorage.setItem('kopkay_tenants_v1', JSON.stringify(tenants));
+        }, [tenants]);
 
         useEffect(() => {
           localStorage.setItem('kopkay_menu_v1', JSON.stringify(menuItems));
@@ -492,7 +577,7 @@
         const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
         const totalCartQty = cart.reduce((sum, c) => sum + c.qty, 0);
         const getQtyInCart = (id) => cart.find((c) => c.id === id)?.qty || 0;
-        const getTenantName = (id) => TENANTS.find((t) => t.id === id)?.name || id;
+        const getTenantName = (id) => tenants.find((t) => t.id === id)?.name || id;
 
         const addToCart = (item) => {
           if (!item.available) return;
@@ -519,7 +604,7 @@
             return;
           }
 
-          const tenantBreakdown = TENANTS.map((tenant) => {
+          const tenantBreakdown = tenants.map((tenant) => {
             const tItems = cart.filter((i) => i.tenantId === tenant.id);
             const grossSales = tItems.reduce((sum, i) => sum + i.price * i.qty, 0);
             const commissionCut = Math.round(grossSales * tenant.commissionRate);
@@ -566,12 +651,89 @@
           setReceiptOrder(newOrder);
         };
 
+        // Period filter helper (using local date YYYY-MM-DD)
+        const getLocalDateKey = (isoOrDate) => {
+          const d = new Date(isoOrDate);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        };
+
+        const filteredReportOrders = useMemo(() => {
+          if (reportPeriod === 'all') return orders;
+          const nowDate = new Date();
+          const todayKey = getLocalDateKey(nowDate);
+          const yesterdayDate = new Date(nowDate);
+          yesterdayDate.setDate(nowDate.getDate() - 1);
+          const yesterdayKey = getLocalDateKey(yesterdayDate);
+
+          if (reportPeriod === 'today') {
+            return orders.filter((o) => getLocalDateKey(o.createdAt) === todayKey);
+          }
+          if (reportPeriod === 'yesterday') {
+            return orders.filter((o) => getLocalDateKey(o.createdAt) === yesterdayKey);
+          }
+          const days = reportPeriod === '7d' ? 7 : 30;
+          const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+          return orders.filter((o) => new Date(o.createdAt).getTime() >= cutoff);
+        }, [orders, reportPeriod]);
+
+        // Product sales breakdown per tenant
+        const productSalesByTenant = useMemo(() => {
+          const map = new Map();
+          filteredReportOrders.forEach((order) => {
+            order.items.forEach((item) => {
+              const key = `${item.tenantId}__${item.id}__${item.name}`;
+              const existing = map.get(key);
+              const lineGross = item.price * item.qty;
+              if (existing) {
+                existing.qty += item.qty;
+                existing.grossSales += lineGross;
+              } else {
+                const tInfo = tenants.find((t) => t.id === item.tenantId);
+                map.set(key, {
+                  key,
+                  productId: item.id,
+                  name: item.name,
+                  category: item.category || '-',
+                  tenantId: item.tenantId,
+                  tenantName: tInfo?.name || item.tenantId,
+                  commissionRate: tInfo?.commissionRate || 0,
+                  unitPrice: item.price,
+                  qty: item.qty,
+                  grossSales: lineGross,
+                });
+              }
+            });
+          });
+
+          return Array.from(map.values())
+            .map((row) => {
+              const commissionCut = Math.round(row.grossSales * row.commissionRate);
+              return {
+                ...row,
+                commissionCut,
+                netPayout: row.grossSales - commissionCut,
+              };
+            })
+            .filter((row) => {
+              const matchTenant = reportTenantFilter === 'all' || row.tenantId === reportTenantFilter;
+              const matchQuery =
+                !reportProductSearch.trim() ||
+                row.name.toLowerCase().includes(reportProductSearch.toLowerCase()) ||
+                row.tenantName.toLowerCase().includes(reportProductSearch.toLowerCase());
+              return matchTenant && matchQuery;
+            })
+            .sort((a, b) => b.qty - a.qty || b.grossSales - a.grossSales);
+        }, [filteredReportOrders, reportTenantFilter, reportProductSearch]);
+
         // Summary calculations
         const summaryByTenant = useMemo(() => {
-          return TENANTS.map((tenant) => {
+          return tenants.map((tenant) => {
             let grossSales = 0;
             let totalQty = 0;
-            orders.forEach((order) => {
+            filteredReportOrders.forEach((order) => {
               order.items.forEach((item) => {
                 if (item.tenantId === tenant.id) {
                   grossSales += item.price * item.qty;
@@ -588,7 +750,7 @@
               netPayout: grossSales - commissionCut,
             };
           });
-        }, [orders]);
+        }, [filteredReportOrders]);
 
         const shiftTotals = summaryByTenant.reduce(
           (acc, cur) => ({
@@ -601,7 +763,9 @@
         );
 
         const kopkayIncome =
-          (summaryByTenant.find((t) => t.id === 'kopkay')?.grossSales || 0) + shiftTotals.commission;
+          summaryByTenant
+            .filter((t) => t.ownerType === 'internal')
+            .reduce((sum, t) => sum + t.grossSales, 0) + shiftTotals.commission;
 
         const exportCSV = () => {
           const headers = ['Nama Tenant', 'Skema', 'Item Terjual', 'Omzet Kotor (Rp)', 'Potongan 10% (Rp)', 'Hak Bersih Tenant (Rp)'];
@@ -946,7 +1110,15 @@
                     {['Cashier', 'Admin'].map((r) => (
                       <button
                         key={r}
-                        onClick={() => setRole(r)}
+                        type="button"
+                        onClick={() => {
+                          if (r === 'Admin') {
+                            requestAdminAccess({ type: 'switch_role' });
+                          } else {
+                            setRole('Cashier');
+                            if (activeTab === 'menu-admin') setActiveTab('order');
+                          }
+                        }}
                         className={`px-2 py-1 rounded-lg text-[11px] lg:text-xs font-semibold ${
                           role === r ? 'bg-teal-600 text-white' : 'text-slate-600 dark:text-slate-400'
                         }`}
@@ -1006,9 +1178,9 @@
                               : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800'
                           }`}
                         >
-                          Semua (4)
+                          Semua ({tenants.length})
                         </button>
-                        {TENANTS.map((t) => (
+                        {tenants.map((t) => (
                           <button
                             key={t.id}
                             onClick={() => {
@@ -1428,8 +1600,8 @@
                   <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
-                        <h2 className="text-lg font-bold">Rekap Closing Shift & Komisi 10%</h2>
-                        <p className="text-xs text-slate-500">Otomatis memotong 10% omzet kotor tenant mitra</p>
+                        <h2 className="text-lg font-bold">Laporan Penjualan & Komisi 10%</h2>
+                        <p className="text-xs text-slate-500">Rekap per tenant, rincian item terjual per produk, dan export data</p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -1472,12 +1644,43 @@
                       </div>
                     </div>
 
+                    {/* Filter Periode Cepat ala Dashboard */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[
+                        { id: 'all', label: 'Semua Shift' },
+                        { id: 'today', label: 'Hari Ini' },
+                        { id: 'yesterday', label: 'Kemarin' },
+                        { id: '7d', label: '7 Hari' },
+                        { id: '30d', label: '30 Hari' },
+                      ].map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => setReportPeriod(p.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+                            reportPeriod === p.id
+                              ? 'bg-teal-600 text-white border-teal-600'
+                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                      <span className="ml-auto text-xs text-slate-500 font-medium">
+                        {filteredReportOrders.length} transaksi • {shiftTotals.qty} item keluar
+                      </span>
+                    </div>
+
+                    {/* Ringkasan Rekap per Tenant */}
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
+                      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                        <h3 className="font-bold text-sm">Rekap Bagi Hasil per Tenant</h3>
+                        <span className="text-[11px] text-slate-400">Tenant mitra otomatis dipotong 10%</span>
+                      </div>
                       <table className="w-full text-left border-collapse text-xs">
                         <thead>
                           <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 text-slate-500">
                             <th className="p-3 font-bold">Tenant</th>
-                            <th className="p-3 font-bold text-right">Item</th>
+                            <th className="p-3 font-bold text-right">Item Keluar</th>
                             <th className="p-3 font-bold text-right">Omzet Kotor</th>
                             <th className="p-3 font-bold text-right">Potongan 10%</th>
                             <th className="p-3 font-bold text-right">Hak Bersih</th>
@@ -1506,6 +1709,81 @@
                       </table>
                     </div>
 
+                    {/* Penjualan per Produk per Tenant */}
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden space-y-3 p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-sm">Penjualan per Produk per Tenant</h3>
+                          <p className="text-[11px] text-slate-500">Lihat item apa saja yang keluar dan berapa jumlah porsinya per tenant</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={reportTenantFilter}
+                            onChange={(e) => setReportTenantFilter(e.target.value)}
+                            className="px-2.5 py-1.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                          >
+                            <option value="all">Semua Tenant</option>
+                            {tenants.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={reportProductSearch}
+                            onChange={(e) => setReportProductSearch(e.target.value)}
+                            placeholder="Cari nama produk..."
+                            className="px-2.5 py-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                          />
+                        </div>
+                      </div>
+
+                      {productSalesByTenant.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-8">
+                          Belum ada item terjual pada filter yang dipilih.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead>
+                              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 text-slate-500">
+                                <th className="p-2.5 font-bold">Produk / Item</th>
+                                <th className="p-2.5 font-bold">Tenant</th>
+                                <th className="p-2.5 font-bold text-right">Terjual</th>
+                                <th className="p-2.5 font-bold text-right">Omzet Kotor</th>
+                                <th className="p-2.5 font-bold text-right">Potongan 10%</th>
+                                <th className="p-2.5 font-bold text-right">Hak Bersih</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {productSalesByTenant.map((prod) => (
+                                <tr key={prod.key}>
+                                  <td className="p-2.5">
+                                    <p className="font-bold text-slate-900 dark:text-white">{prod.name}</p>
+                                    <p className="text-[10px] text-slate-400">
+                                      {prod.category} • {formatRp(prod.unitPrice)}/item
+                                    </p>
+                                  </td>
+                                  <td className="p-2.5 text-slate-600 dark:text-slate-300 font-medium">{prod.tenantName}</td>
+                                  <td className="p-2.5 text-right font-extrabold text-teal-600 dark:text-teal-400">
+                                    {prod.qty} item
+                                  </td>
+                                  <td className="p-2.5 text-right">{formatRp(prod.grossSales)}</td>
+                                  <td className="p-2.5 text-right text-amber-600 font-semibold">
+                                    {formatRp(prod.commissionCut)}
+                                  </td>
+                                  <td className="p-2.5 text-right text-emerald-600 font-bold">
+                                    {formatRp(prod.netPayout)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="p-4 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xs text-rose-700 dark:text-rose-300 font-semibold">
                         Tutup shift hari ini? Pastikan laporan sudah di-export terlebih dahulu.
@@ -1524,6 +1802,207 @@
 
                 {activeTab === 'menu-admin' && role === 'Admin' && (
                   <div className="flex-1 p-4 lg:p-6 overflow-y-auto space-y-5">
+                    {/* Kelola Tenant / Stand */}
+                    <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h2 className="text-base font-bold">Kelola Tenant / Stand</h2>
+                          <p className="text-[11px] text-slate-500">Tambah tenant baru (otomatis terpotong 10% atau 0% internal)</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('Reset daftar tenant ke bawaan awal?')) setTenants(INITIAL_TENANTS);
+                          }}
+                          className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 text-[11px] font-semibold"
+                        >
+                          Reset Tenant
+                        </button>
+                      </div>
+
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const trimmed = newTenantName.trim();
+                          if (!trimmed) return;
+                          const slug =
+                            trimmed
+                              .toLowerCase()
+                              .replace(/[^a-z0-9]+/g, '-')
+                              .replace(/^-|-$/g, '') || 'tenant';
+                          const uniqueId = tenants.some((t) => t.id === slug)
+                            ? `${slug}-${Date.now().toString().slice(-3)}`
+                            : slug;
+                          const isInternal = newTenantType === 'internal';
+                          setTenants((prev) => [
+                            ...prev,
+                            {
+                              id: uniqueId,
+                              name: trimmed,
+                              ownerType: isInternal ? 'internal' : 'tenant',
+                              commissionRate: isInternal ? 0 : 0.1,
+                            },
+                          ]);
+                          setNewMenuTenant(uniqueId);
+                          setNewTenantName('');
+                        }}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+                      >
+                        <input
+                          type="text"
+                          value={newTenantName}
+                          onChange={(e) => setNewTenantName(e.target.value)}
+                          placeholder="Nama tenant baru..."
+                          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                        />
+                        <select
+                          value={newTenantType}
+                          onChange={(e) => setNewTenantType(e.target.value)}
+                          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                        >
+                          <option value="tenant">Tenant Mitra (Potongan 10%)</option>
+                          <option value="internal">Internal / Milik Sendiri (Potongan 0%)</option>
+                        </select>
+                        <button
+                          type="submit"
+                          className="py-2 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                        >
+                          + Tambah Tenant
+                        </button>
+                      </form>
+
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800 pt-1">
+                        {tenants.map((t) => {
+                          const isEditing = editingTenantId === t.id;
+                          return (
+                            <div key={t.id} className="py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                              {isEditing ? (
+                                <div className="flex-1 flex flex-wrap items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={editTenantName}
+                                    onChange={(e) => setEditTenantName(e.target.value)}
+                                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs flex-1 min-w-[140px]"
+                                  />
+                                  <select
+                                    value={editTenantType}
+                                    onChange={(e) => setEditTenantType(e.target.value)}
+                                    className="px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs"
+                                  >
+                                    <option value="tenant">Mitra (10%)</option>
+                                    <option value="internal">Internal (0%)</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const trimmed = editTenantName.trim();
+                                      if (!trimmed) return;
+                                      const isInternal = editTenantType === 'internal';
+                                      setTenants((prev) =>
+                                        prev.map((item) =>
+                                          item.id === t.id
+                                            ? {
+                                                ...item,
+                                                name: trimmed,
+                                                ownerType: isInternal ? 'internal' : 'tenant',
+                                                commissionRate: isInternal ? 0 : 0.1,
+                                              }
+                                            : item
+                                        )
+                                      );
+                                      setEditingTenantId(null);
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-teal-600 text-white font-bold text-[11px]"
+                                  >
+                                    Simpan
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingTenantId(null)}
+                                    className="px-2 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 font-semibold text-[11px]"
+                                  >
+                                    Batal
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-900 dark:text-white">{t.name}</span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                        t.commissionRate > 0
+                                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                                          : 'bg-teal-100 text-teal-800 dark:bg-teal-900/50 dark:text-teal-300'
+                                      }`}
+                                    >
+                                      Potongan {t.commissionRate > 0 ? '10%' : '0%'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingTenantId(t.id);
+                                        setEditTenantName(t.name);
+                                        setEditTenantType(t.ownerType);
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-semibold text-[11px]"
+                                    >
+                                      Edit
+                                    </button>
+                                    {tenants.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (window.confirm(`Hapus tenant "${t.name}"?`)) {
+                                            setTenants((prev) => prev.filter((item) => item.id !== t.id));
+                                            if (selectedTenant === t.id) setSelectedTenant('all');
+                                          }
+                                        }}
+                                        className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-semibold text-[11px]"
+                                      >
+                                        Hapus
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Pengaturan PIN Admin (Selalu Bisa Diedit Kapan Saja) */}
+                    <div className="p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-sm font-bold">Keamanan PIN Admin</h3>
+                          <p className="text-[11px] text-slate-500">
+                            Wajib diisi setiap klik tombol Admin • PIN aktif saat ini: <span className="font-mono font-bold text-teal-600 dark:text-teal-400">{adminPin}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <form onSubmit={handleSaveNewPin} className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          value={newPinValue}
+                          onChange={(e) => setNewPinValue(e.target.value)}
+                          placeholder="Masukkan PIN Admin baru (misal: 16062024)..."
+                          className="flex-1 px-3 py-2 rounded-xl text-xs font-mono border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                        />
+                        <button
+                          type="submit"
+                          className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-teal-600 text-white text-xs font-bold"
+                        >
+                          Ubah PIN Admin
+                        </button>
+                      </form>
+                      {pinSavedNotice && (
+                        <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{pinSavedNotice}</p>
+                      )}
+                    </div>
+
                     <div className="flex items-center justify-between">
                       <h2 className="text-lg font-bold">Kelola Menu & Harga</h2>
                       <button
@@ -1576,7 +2055,7 @@
                         onChange={(e) => setNewMenuTenant(e.target.value)}
                         className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
                       >
-                        {TENANTS.map((t) => (
+                        {tenants.map((t) => (
                           <option key={t.id} value={t.id}>
                             {t.name}
                           </option>
@@ -1607,40 +2086,143 @@
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {menuItems
                             .filter((i) => !searchQuery.trim() || i.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                            .map((item) => (
-                              <tr key={item.id}>
-                                <td className="p-3 font-bold">{item.name}</td>
-                                <td className="p-3 text-slate-500">{getTenantName(item.tenantId)}</td>
-                                <td className="p-3">
-                                  <input
-                                    type="number"
-                                    value={item.price}
-                                    onChange={(e) =>
-                                      setMenuItems((prev) =>
-                                        prev.map((m) => (m.id === item.id ? { ...m, price: Number(e.target.value) } : m))
-                                      )
-                                    }
-                                    className="w-24 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
-                                  />
-                                </td>
-                                <td className="p-3">
-                                  <button
-                                    onClick={() =>
-                                      setMenuItems((prev) =>
-                                        prev.map((m) => (m.id === item.id ? { ...m, available: !m.available } : m))
-                                      )
-                                    }
-                                    className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
-                                      item.available
-                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
-                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
-                                    }`}
-                                  >
-                                    {item.available ? 'Tersedia' : 'Habis'}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                            .map((item) => {
+                              const isEditingMenu = editingMenuId === item.id;
+                              return (
+                                <tr key={item.id}>
+                                  <td className="p-3 font-bold">
+                                    {isEditingMenu ? (
+                                      <div className="space-y-1.5">
+                                        <input
+                                          type="text"
+                                          value={editMenuName}
+                                          onChange={(e) => setEditMenuName(e.target.value)}
+                                          className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+                                        />
+                                        <input
+                                          type="text"
+                                          value={editMenuCat}
+                                          onChange={(e) => setEditMenuCat(e.target.value)}
+                                          className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[11px]"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        <p>{item.name}</p>
+                                        <p className="text-[10px] font-normal text-slate-400">{item.category}</p>
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-3 text-slate-500">
+                                    {isEditingMenu ? (
+                                      <select
+                                        value={editMenuTenant}
+                                        onChange={(e) => setEditMenuTenant(e.target.value)}
+                                        className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs"
+                                      >
+                                        {tenants.map((t) => (
+                                          <option key={t.id} value={t.id}>
+                                            {t.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      getTenantName(item.tenantId)
+                                    )}
+                                  </td>
+                                  <td className="p-3">
+                                    {isEditingMenu ? (
+                                      <input
+                                        type="number"
+                                        value={editMenuPrice}
+                                        onChange={(e) => setEditMenuPrice(e.target.value)}
+                                        className="w-24 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                                      />
+                                    ) : (
+                                      <input
+                                        type="number"
+                                        value={item.price}
+                                        onChange={(e) =>
+                                          setMenuItems((prev) =>
+                                            prev.map((m) => (m.id === item.id ? { ...m, price: Number(e.target.value) } : m))
+                                          )
+                                        }
+                                        className="w-24 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
+                                      />
+                                    )}
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setMenuItems((prev) =>
+                                            prev.map((m) => (m.id === item.id ? { ...m, available: !m.available } : m))
+                                          )
+                                        }
+                                        className={`px-2.5 py-1 rounded-full font-bold text-[11px] ${
+                                          item.available
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                                            : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300'
+                                        }`}
+                                      >
+                                        {item.available ? 'Tersedia' : 'Habis'}
+                                      </button>
+                                      {isEditingMenu ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!editMenuName.trim()) return;
+                                            setMenuItems((prev) =>
+                                              prev.map((m) =>
+                                                m.id === item.id
+                                                  ? {
+                                                      ...m,
+                                                      name: editMenuName.trim(),
+                                                      price: Number(editMenuPrice) || m.price,
+                                                      tenantId: editMenuTenant,
+                                                      category: editMenuCat.trim() || m.category,
+                                                    }
+                                                  : m
+                                              )
+                                            );
+                                            setEditingMenuId(null);
+                                          }}
+                                          className="px-2 py-1 rounded-lg bg-teal-600 text-white font-bold text-[11px]"
+                                        >
+                                          Simpan
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingMenuId(item.id);
+                                            setEditMenuName(item.name);
+                                            setEditMenuPrice(String(item.price));
+                                            setEditMenuTenant(item.tenantId);
+                                            setEditMenuCat(item.category || 'Makanan Utama');
+                                          }}
+                                          className="px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-semibold text-[11px]"
+                                        >
+                                          Edit
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (window.confirm(`Hapus menu "${item.name}"?`)) {
+                                            setMenuItems((prev) => prev.filter((m) => m.id !== item.id));
+                                          }
+                                        }}
+                                        className="px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-semibold text-[11px]"
+                                      >
+                                        Hapus
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                         </tbody>
                       </table>
                     </div>
@@ -1686,7 +2268,15 @@
                         <button
                           key={r}
                           type="button"
-                          onClick={() => setRole(r)}
+                          onClick={() => {
+                            if (r === 'Admin') {
+                              setSettingsDrawerOpen(false);
+                              requestAdminAccess({ type: 'switch_role' });
+                            } else {
+                              setRole('Cashier');
+                              if (activeTab === 'menu-admin') setActiveTab('order');
+                            }
+                          }}
                           className={`py-2 px-3 rounded-xl text-xs font-bold border ${
                             role === r
                               ? 'bg-teal-600 text-white border-teal-600'
@@ -1757,8 +2347,8 @@
                   {/* Ringkasan Aturan Komisi */}
                   <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 text-xs text-slate-600 dark:text-slate-300 space-y-1">
                     <p className="font-bold text-slate-800 dark:text-white">Aturan Bagi Hasil Tenant</p>
-                    <p>• Kopitiam Kopi & Kaya: 100% pendapatan toko</p>
-                    <p>• Tenant Mitra (Kamie Hainan, Lontong & Soto, Joice): potongan otomatis 10% dari omzet kotor</p>
+                    <p>• Kopitiam Kopi & Kaya & Kamie Hainan: 100% pendapatan toko (0% potongan)</p>
+                    <p>• Tenant Mitra (Lontong & Soto, Joice): potongan otomatis 10% dari omzet kotor</p>
                   </div>
 
                   <button
@@ -1768,6 +2358,75 @@
                   >
                     Tutup Menu
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* PIN Admin Modal (Wajib Setiap Klik Tombol Admin) */}
+            {pinModalOpen && (
+              <div
+                onClick={() => {
+                  setPinModalOpen(false);
+                  setPinInput('');
+                  setPinError('');
+                }}
+                className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white dark:bg-slate-900 rounded-2xl max-w-xs w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">Verifikasi PIN Admin</h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPinModalOpen(false);
+                        setPinInput('');
+                        setPinError('');
+                      }}
+                      className="p-1 text-slate-400"
+                    >
+                      <Icon name="x" className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">Masukkan PIN Admin untuk masuk ke mode Admin.</p>
+                  <form onSubmit={handleVerifyAdminPin} className="space-y-2.5">
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoFocus
+                      value={pinInput}
+                      onChange={(e) => {
+                        setPinInput(e.target.value);
+                        if (pinError) setPinError('');
+                      }}
+                      placeholder="Masukkan PIN..."
+                      className="w-full px-3 py-2 rounded-xl text-sm font-mono border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                    {pinError && (
+                      <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">{pinError}</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPinModalOpen(false);
+                          setPinInput('');
+                          setPinError('');
+                        }}
+                        className="py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        type="submit"
+                        className="py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                      >
+                        Masuk Admin
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}
@@ -1839,17 +2498,36 @@
                     <p className="text-center text-[10px] pt-2">Terima kasih telah berkunjung!</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 mt-4">
+                  {btStatusMsg && (
+                    <p className="mt-2.5 text-[11px] font-semibold text-center text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/40 py-1.5 px-2.5 rounded-xl">
+                      {btStatusMsg}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
                     <button
-                      onClick={() => window.print()}
-                      className="py-2.5 rounded-xl bg-teal-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                      type="button"
+                      onClick={() => handlePrintBluetooth(receiptOrder)}
+                      disabled={btPrinting}
+                      className="py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-1.5"
                     >
                       <Icon name="printer" className="w-4 h-4" />
-                      <span>Cetak Struk</span>
+                      <span>{btPrinting ? 'Mencetak...' : btDeviceName ? `BT: ${btDeviceName}` : 'Cetak Bluetooth'}</span>
                     </button>
                     <button
-                      onClick={() => setReceiptOrder(null)}
-                      className="py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                      type="button"
+                      onClick={() => window.print()}
+                      className="py-2.5 px-3 rounded-xl bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                    >
+                      <span>Print Sistem</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBtStatusMsg('');
+                        setReceiptOrder(null);
+                      }}
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
                     >
                       Selesai
                     </button>
@@ -1860,6 +2538,141 @@
           </div>
         );
       }
+
+
+      // ESC/POS helper for 58mm Bluetooth thermal printer (Web Bluetooth API)
+      const encodeEscPosReceipt = (order, getTenantLabel) => {
+        const encoder = new TextEncoder();
+        const bytes = [];
+        const push = (...arr) => bytes.push(...arr);
+        const pushText = (str) => push(...encoder.encode(str));
+
+        // Initialize printer: ESC @
+        push(0x1b, 0x40);
+        // Select code page PC858 / standard ASCII-safe
+        push(0x1b, 0x74, 0x00);
+
+        const padLine = (left, right, width = 32) => {
+          const l = String(left || '');
+          const r = String(right || '');
+          const space = Math.max(1, width - l.length - r.length);
+          return l.slice(0, Math.max(0, width - r.length - 1)) + ' '.repeat(space) + r;
+        };
+
+        const lineSep = '-'.repeat(32) + '\n';
+
+        // Center + Bold + Double height title
+        push(0x1b, 0x61, 0x01); // center
+        push(0x1b, 0x45, 0x01); // bold on
+        push(0x1d, 0x21, 0x11); // double width/height
+        pushText('KOPKAY POS\n');
+        push(0x1d, 0x21, 0x00); // normal size
+        pushText('KOPITIAM KOPI & KAYA\n');
+        push(0x1b, 0x45, 0x00); // bold off
+        pushText('Pekanbaru, Riau\n');
+
+        // Left align meta
+        push(0x1b, 0x61, 0x00);
+        pushText(lineSep);
+        const timeStr = new Date(order.createdAt).toLocaleString('id-ID', {
+          day: '2-digit',
+          month: '2-digit',
+          year: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        pushText(`No   : ${order.id}\n`);
+        pushText(`Waktu: ${timeStr}\n`);
+        pushText(`Tipe : ${order.orderType} (${order.tableName})\n`);
+        pushText(`Plg  : ${order.customerName}\n`);
+        pushText(lineSep);
+
+        // Items
+        (order.items || []).forEach((item) => {
+          pushText(`${item.qty}x ${item.name}\n`);
+          const subStr = formatRp(item.price * item.qty);
+          const unitStr = `  @${formatRp(item.price)}`;
+          pushText(padLine(unitStr, subStr) + '\n');
+        });
+
+        pushText(lineSep);
+        push(0x1b, 0x45, 0x01);
+        pushText(padLine('TOTAL', formatRp(order.total)) + '\n');
+        push(0x1b, 0x45, 0x00);
+        pushText(padLine(order.paymentMethod, formatRp(order.cashReceived)) + '\n');
+        if (order.paymentMethod === 'Tunai') {
+          pushText(padLine('Kembalian', formatRp(order.changeAmount)) + '\n');
+        }
+
+        if (order.orderNote) {
+          pushText(lineSep);
+          pushText(`Catatan: ${order.orderNote}\n`);
+        }
+
+        push(0x1b, 0x61, 0x01);
+        pushText('\nTerima kasih telah berkunjung!\n\n\n');
+
+        // Feed & partial cut (0x1d, 0x56, 0x42, 0x00)
+        push(0x1d, 0x56, 0x42, 0x00);
+        return new Uint8Array(bytes);
+      };
+
+      const sendRawToBluetoothPrinter = async (rawBytes, existingDeviceRef) => {
+        if (!navigator.bluetooth) {
+          throw new Error('Browser ini belum mendukung Web Bluetooth. Gunakan Chrome/Edge di Android/PC, atau gunakan tombol Cetak Struk biasa.');
+        }
+
+        const PRINTER_SERVICES = [
+          '000018f0-0000-1000-8000-00805f9b34fb',
+          'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+          '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        ];
+
+        let device = existingDeviceRef?.current || null;
+        if (!device || !device.gatt) {
+          device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: PRINTER_SERVICES,
+          });
+          if (existingDeviceRef) existingDeviceRef.current = device;
+        }
+
+        if (!device.gatt.connected) {
+          await device.gatt.connect();
+        }
+
+        const server = device.gatt;
+        const services = await server.getPrimaryServices();
+        let writeChar = null;
+
+        for (const service of services) {
+          const chars = await service.getCharacteristics();
+          for (const ch of chars) {
+            if (ch.properties.writeWithoutResponse || ch.properties.write) {
+              writeChar = ch;
+              break;
+            }
+          }
+          if (writeChar) break;
+        }
+
+        if (!writeChar) {
+          throw new Error('Characteristic cetak printer Bluetooth tidak ditemukan.');
+        }
+
+        const chunkSize = 100;
+        for (let i = 0; i < rawBytes.length; i += chunkSize) {
+          const chunk = rawBytes.slice(i, i + chunkSize);
+          if (writeChar.properties.writeWithoutResponse) {
+            await writeChar.writeValueWithoutResponse(chunk);
+          } else {
+            await writeChar.writeValue(chunk);
+          }
+          await new Promise((res) => setTimeout(res, 25));
+        }
+
+        return device.name || 'Printer Bluetooth';
+      };
 
       const root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(<App />);
