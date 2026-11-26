@@ -716,7 +716,9 @@
         }, [menuItems, selectedTenant]);
 
         const visibleItems = useMemo(() => {
+          const activeTenantIds = new Set(tenants.map((t) => t.id));
           return menuItems.filter((item) => {
+            if (!activeTenantIds.has(item.tenantId)) return false;
             const matchTenant = selectedTenant === 'all' || item.tenantId === selectedTenant;
             const matchCategory = selectedCategory === 'All' || item.category === selectedCategory;
             const matchSearch =
@@ -725,7 +727,7 @@
               item.category.toLowerCase().includes(searchQuery.toLowerCase());
             return matchTenant && matchCategory && matchSearch;
           });
-        }, [menuItems, selectedTenant, selectedCategory, searchQuery]);
+        }, [menuItems, tenants, selectedTenant, selectedCategory, searchQuery]);
 
         const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
         const totalCartQty = cart.reduce((sum, c) => sum + c.qty, 0);
@@ -2484,8 +2486,8 @@
                       onSubmit={(e) => {
                         e.preventDefault();
                         if (!newMenuName.trim() || !newMenuPrice) return;
-                        setMenuItems((prev) => [
-                          {
+                        setMenuItems((prev) => {
+                          const createdItem = {
                             id: 'item-' + Date.now(),
                             name: newMenuName.trim(),
                             price: Number(newMenuPrice),
@@ -2493,9 +2495,23 @@
                             category: newMenuCat,
                             available: true,
                             desc: '',
-                          },
-                          ...prev,
-                        ]);
+                          };
+                          if (newMenuTenant === 'kopkay') {
+                            return [createdItem, ...prev];
+                          }
+                          const lastKopkayIdx = prev.reduce(
+                            (lastIdx, it, idx) => (it.tenantId === 'kopkay' ? idx : lastIdx),
+                            -1
+                          );
+                          if (lastKopkayIdx === -1) {
+                            return [...prev, createdItem];
+                          }
+                          return [
+                            ...prev.slice(0, lastKopkayIdx + 1),
+                            createdItem,
+                            ...prev.slice(lastKopkayIdx + 1),
+                          ];
+                        });
                         setNewMenuName('');
                         setNewMenuPrice('');
                       }}
