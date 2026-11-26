@@ -433,93 +433,112 @@
         const [receiptOrder, setReceiptOrder] = useState(null);
         const [mobileCartOpen, setMobileCartOpen] = useState(false);
         const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
-        const isProgrammaticPopRef = useRef(false);
-        const isAnyOverlayOpen = Boolean(
-          settingsDrawerOpen ||
-            dashboardDetailModal ||
-            billDrawerOpen ||
-            shiftModalMode ||
-            pinModalOpen ||
-            receiptOrder ||
-            mobileCartOpen
-        );
-        const prevOverlayOpenRef = useRef(false);
+        const [dashboardDetailModal, setDashboardDetailModal] = useState(null);
+        const [selectedClosedShift, setSelectedClosedShift] = useState(null);
 
-        useEffect(() => {
-          const wasOpen = prevOverlayOpenRef.current;
-          prevOverlayOpenRef.current = isAnyOverlayOpen;
+        const navStackRef = useRef(['tab:order']);
+        const isPoppingHistoryRef = useRef(false);
+        const latestNavStateRef = useRef({});
+        latestNavStateRef.current = {
+          activeTab,
+          mobileCartOpen,
+          billDrawerOpen,
+          settingsDrawerOpen,
+          dashboardDetailModal,
+          selectedClosedShift,
+          shiftModalMode,
+          pinModalOpen,
+          receiptOrder,
+        };
 
-          if (!wasOpen && isAnyOverlayOpen) {
-            try {
-              window.history.pushState({ kopkayOverlay: true }, '', window.location.href);
-            } catch (e) {}
-          } else if (wasOpen && !isAnyOverlayOpen) {
-            if (isProgrammaticPopRef.current) {
-              isProgrammaticPopRef.current = false;
-            } else if (window.history.state && window.history.state.kopkayOverlay) {
-              isProgrammaticPopRef.current = true;
-              window.history.back();
-            }
-          }
-        }, [isAnyOverlayOpen]);
-
-        useEffect(() => {
-          const onPopState = () => {
-            if (isProgrammaticPopRef.current) {
-              isProgrammaticPopRef.current = false;
-              return;
-            }
-
-            if (receiptOrder) {
-              setBtStatusMsg('');
-              setReceiptOrder(null);
-              return;
-            }
-            if (pinModalOpen) {
-              setPinModalOpen(false);
-              setPinInput('');
-              setPinError('');
-              return;
-            }
-            if (shiftModalMode) {
-              setShiftModalMode(null);
-              return;
-            }
-            if (billDrawerOpen) {
-              setBillDrawerOpen(false);
-              return;
-            }
-            if (dashboardDetailModal) {
-              setDashboardDetailModal(null);
-              return;
-            }
-            if (settingsDrawerOpen) {
-              setSettingsDrawerOpen(false);
-              return;
-            }
-            if (mobileCartOpen) {
-              setMobileCartOpen(false);
-              return;
-            }
-            if (activeTab !== 'order') {
-              setActiveTab('order');
-            }
-          };
-
-          window.addEventListener('popstate', onPopState);
-          return () => window.removeEventListener('popstate', onPopState);
+        const activeNavKey = useMemo(() => {
+          if (receiptOrder) return 'modal:receipt';
+          if (pinModalOpen) return 'modal:pin';
+          if (shiftModalMode) return 'modal:shift';
+          if (selectedClosedShift) return 'modal:closedShift';
+          if (dashboardDetailModal) return 'modal:dashboardDetail';
+          if (billDrawerOpen) return 'modal:bill';
+          if (settingsDrawerOpen) return 'modal:settings';
+          if (mobileCartOpen) return 'modal:cart';
+          return `tab:${activeTab}`;
         }, [
           receiptOrder,
           pinModalOpen,
           shiftModalMode,
-          billDrawerOpen,
+          selectedClosedShift,
           dashboardDetailModal,
+          billDrawerOpen,
           settingsDrawerOpen,
           mobileCartOpen,
           activeTab,
         ]);
-        const [dashboardDetailModal, setDashboardDetailModal] = useState(null);
-        const [selectedClosedShift, setSelectedClosedShift] = useState(null);
+
+        useEffect(() => {
+          try {
+            window.history.replaceState({ kopkayGuard: true, idx: 0 }, '', window.location.href);
+            window.history.pushState({ kopkayStep: 'tab:order', idx: 1 }, '', window.location.href);
+          } catch (e) {}
+        }, []);
+
+        useEffect(() => {
+          if (isPoppingHistoryRef.current) {
+            isPoppingHistoryRef.current = false;
+            return;
+          }
+          const stack = navStackRef.current;
+          if (stack[stack.length - 1] === activeNavKey) return;
+          stack.push(activeNavKey);
+          try {
+            window.history.pushState({ kopkayStep: activeNavKey, idx: stack.length }, '', window.location.href);
+          } catch (e) {}
+        }, [activeNavKey]);
+
+        useEffect(() => {
+          const onPopState = () => {
+            const st = latestNavStateRef.current;
+            const stack = navStackRef.current;
+            if (stack.length > 1) {
+              stack.pop();
+            }
+            const prevStep = stack[stack.length - 1] || 'tab:order';
+            isPoppingHistoryRef.current = true;
+
+            if (st.receiptOrder) {
+              setBtStatusMsg('');
+              setReceiptOrder(null);
+            } else if (st.pinModalOpen) {
+              setPinModalOpen(false);
+              setPinInput('');
+              setPinError('');
+            } else if (st.shiftModalMode) {
+              setShiftModalMode(null);
+            } else if (st.selectedClosedShift) {
+              setSelectedClosedShift(null);
+            } else if (st.dashboardDetailModal) {
+              setDashboardDetailModal(null);
+            } else if (st.billDrawerOpen) {
+              setBillDrawerOpen(false);
+            } else if (st.settingsDrawerOpen) {
+              setSettingsDrawerOpen(false);
+            } else if (st.mobileCartOpen) {
+              setMobileCartOpen(false);
+            } else if (st.activeTab !== 'order') {
+              const targetTab = prevStep.startsWith('tab:') ? prevStep.slice(4) : 'order';
+              setActiveTab(targetTab);
+            } else {
+              isPoppingHistoryRef.current = false;
+            }
+
+            try {
+              if (!window.history.state || window.history.state.kopkayGuard) {
+                window.history.pushState({ kopkayStep: prevStep, idx: stack.length }, '', window.location.href);
+              }
+            } catch (e) {}
+          };
+
+          window.addEventListener('popstate', onPopState);
+          return () => window.removeEventListener('popstate', onPopState);
+        }, []);
 
         const [zoneFilter, setZoneFilter] = useState('All');
         const [selectedTableId, setSelectedTableId] = useState('T01');
@@ -1767,7 +1786,7 @@
                 </div>
               </header>
 
-              {/* Mobile Horizontal Nav: Kasir, Meja, Ringkasan tetap di posisi utama */}
+              {/* Mobile Horizontal Nav: Kasir, Meja, Ringkasan, Bill Aktif & Menu Lain */}
               <nav className="lg:hidden flex items-center justify-between gap-1.5 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto no-scrollbar shrink-0">
                 <div className="flex items-center gap-1.5">
                   {primaryNavItems.map((item) => (
@@ -1775,7 +1794,7 @@
                       key={item.id}
                       type="button"
                       onClick={() => setActiveTab(item.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 ${
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1 ${
                         activeTab === item.id
                           ? 'bg-teal-600 text-white'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
@@ -1785,11 +1804,31 @@
                       <span>{item.label}</span>
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    onClick={() => setBillDrawerOpen(true)}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1 border ${
+                      openBills.length > 0
+                        ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300'
+                        : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    <span>Bill</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                        openBills.length > 0
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                      }`}
+                    >
+                      {openBills.length}
+                    </span>
+                  </button>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSettingsDrawerOpen(true)}
-                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1 border ${
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1 border shrink-0 ${
                     secondaryNavItems.some((s) => s.id === activeTab)
                       ? 'bg-teal-50 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 border-teal-400'
                       : 'bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
@@ -1937,19 +1976,43 @@
                       {renderCartPanel()}
                     </div>
 
-                    {/* Mobile Floating Cart Bar */}
-                    {totalCartQty > 0 && (
-                      <div className="lg:hidden fixed bottom-3 left-3 right-3 z-30">
-                        <button
-                          onClick={() => setMobileCartOpen(true)}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-teal-600 text-white shadow-lg flex items-center justify-between font-bold text-sm"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Icon name="cart" className="w-4 h-4" />
-                            <span>{totalCartQty} Item di Keranjang</span>
-                          </div>
-                          <span>{formatRp(subtotal)} →</span>
-                        </button>
+                    {/* Mobile Floating Cart & Bill Aktif Bar */}
+                    {(totalCartQty > 0 || openBills.length > 0) && (
+                      <div className="lg:hidden fixed bottom-3 left-3 right-3 z-30 flex items-center gap-2">
+                        {openBills.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setBillDrawerOpen(true)}
+                            className={`${
+                              totalCartQty > 0 ? 'shrink-0 px-3.5' : 'w-full px-4 justify-between'
+                            } py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white shadow-lg flex items-center gap-2 font-bold text-xs sm:text-sm`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span>Bill Aktif</span>
+                              <span className="px-1.5 py-0.5 rounded-full bg-white text-amber-700 text-[11px] font-extrabold">
+                                {openBills.length}
+                              </span>
+                            </div>
+                            {totalCartQty === 0 && (
+                              <span>
+                                {formatRp(openBills.reduce((s, b) => s + (b.total || 0), 0))} →
+                              </span>
+                            )}
+                          </button>
+                        )}
+                        {totalCartQty > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setMobileCartOpen(true)}
+                            className="flex-1 py-3.5 px-4 rounded-2xl bg-teal-600 text-white shadow-lg flex items-center justify-between font-bold text-xs sm:text-sm"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <Icon name="cart" className="w-4 h-4" />
+                              <span>{totalCartQty} Item</span>
+                            </div>
+                            <span>{formatRp(subtotal)} →</span>
+                          </button>
+                        )}
                       </div>
                     )}
 
