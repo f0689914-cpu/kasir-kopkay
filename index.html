@@ -394,7 +394,22 @@
 
         const [tenants, setTenants] = useState(() => loadStorage('kopkay_tenants_v1', INITIAL_TENANTS));
         const [menuItems, setMenuItems] = useState(() => loadStorage('kopkay_menu_v1', INITIAL_MENU_ITEMS));
-        const [tables, setTables] = useState(() => loadStorage('kopkay_tables_v1', INITIAL_TABLES));
+        const dedupTables = (list) => {
+        const seenIds = new Set();
+        const seenNames = new Set();
+        return (Array.isArray(list) ? list : []).filter((t) => {
+          if (!t) return false;
+          const idKey = String(t.id || '').trim().toLowerCase();
+          const nameKey = String(t.name || '').trim().toLowerCase();
+          if ((idKey && seenIds.has(idKey)) || (nameKey && seenNames.has(nameKey))) {
+            return false;
+          }
+          if (idKey) seenIds.add(idKey);
+          if (nameKey) seenNames.add(nameKey);
+          return true;
+        });
+      };
+      const [tables, setTables] = useState(() => dedupTables(loadStorage('kopkay_tables_v1', INITIAL_TABLES)));
         const [orders, setOrders] = useState(() => loadStorage('kopkay_orders_v1', []));
         const [openBills, setOpenBills] = useState(() => loadStorage('kopkay_open_bills_v1', []));
         const [activeBillId, setActiveBillId] = useState(null);
@@ -667,7 +682,12 @@
         }, [menuItems]);
 
         useEffect(() => {
-          localStorage.setItem('kopkay_tables_v1', JSON.stringify(tables));
+          const clean = dedupTables(tables);
+          if (clean.length !== tables.length) {
+            setTables(clean);
+            return;
+          }
+          localStorage.setItem('kopkay_tables_v1', JSON.stringify(clean));
         }, [tables]);
 
         useEffect(() => {
@@ -1065,6 +1085,9 @@
           setOrderNote('');
           setCashReceived('');
           setActiveBillId(null);
+          setMobileCartOpen(false);
+          setBillDrawerOpen(false);
+          setActiveTab('order');
         };
 
         const handleLoadOpenBill = (bill) => {
@@ -2061,10 +2084,19 @@
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
-                          if (!newTableName.trim()) return;
+                          const cleanTableName = newTableName.trim();
+                          if (!cleanTableName) return;
+                          const alreadyExists = tables.some(
+                            (t) => String(t.name || '').trim().toLowerCase() === cleanTableName.toLowerCase()
+                          );
+                          if (alreadyExists) {
+                            setNewTableName('');
+                            setShowAddTableBox(false);
+                            return;
+                          }
                           const created = {
                             id: 'T-' + Date.now(),
-                            name: newTableName.trim(),
+                            name: cleanTableName,
                             zone: newTableZone,
                             capacity: Number(newTableCap) || 4,
                             guestName: '',
