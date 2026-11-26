@@ -411,7 +411,58 @@
       };
       const [tables, setTables] = useState(() => dedupTables(loadStorage('kopkay_tables_v1', INITIAL_TABLES)));
         const [orders, setOrders] = useState(() => loadStorage('kopkay_orders_v1', []));
-        const [openBills, setOpenBills] = useState(() => loadStorage('kopkay_open_bills_v1', []));
+        const consolidateDuplicateTableBills = (rawBills) => {
+          if (!Array.isArray(rawBills) || rawBills.length === 0) return [];
+          const tablePrimaryIdx = new Map();
+          const result = [];
+
+          const mergeList = (a, b) => {
+            const map = new Map();
+            (a || []).forEach((it) => map.set(it.id, { ...it }));
+            (b || []).forEach((it) => {
+              if (map.has(it.id)) {
+                const cur = map.get(it.id);
+                map.set(it.id, { ...cur, qty: cur.qty + it.qty });
+              } else {
+                map.set(it.id, { ...it });
+              }
+            });
+            return Array.from(map.values());
+          };
+
+          rawBills.forEach((bill) => {
+            if (!bill) return;
+            const normTable = String(bill.tableName || '').trim().toLowerCase();
+            if (bill.orderType === 'Dine-in' && normTable && normTable !== 'takeaway') {
+              if (tablePrimaryIdx.has(normTable)) {
+                const pIdx = tablePrimaryIdx.get(normTable);
+                const primary = result[pIdx];
+                const mergedItems = mergeList(primary.items, bill.items);
+                const mergedTotal = mergedItems.reduce((s, x) => s + (Number(x.price) || 0) * (Number(x.qty) || 0), 0);
+                const guest = primary.customerName || bill.customerName || '';
+                result[pIdx] = {
+                  ...primary,
+                  updatedAt: bill.updatedAt || primary.updatedAt,
+                  customerName: guest,
+                  label: `${primary.tableName}${guest ? ' - ' + guest : ''}`,
+                  orderNote: [primary.orderNote, bill.orderNote].filter(Boolean).join(' | '),
+                  items: mergedItems,
+                  total: mergedTotal,
+                };
+              } else {
+                tablePrimaryIdx.set(normTable, result.length);
+                result.push({ ...bill });
+              }
+            } else {
+              result.push({ ...bill });
+            }
+          });
+          return result;
+        };
+
+        const [openBills, setOpenBills] = useState(() =>
+          consolidateDuplicateTableBills(loadStorage('kopkay_open_bills_v1', []))
+        );
         const [activeBillId, setActiveBillId] = useState(null);
         const [billDrawerOpen, setBillDrawerOpen] = useState(false);
         const [shiftState, setShiftState] = useState(() =>
