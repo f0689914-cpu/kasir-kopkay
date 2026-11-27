@@ -506,6 +506,7 @@
         const [mobileCartOpen, setMobileCartOpen] = useState(false);
         const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
         const [dashboardDetailModal, setDashboardDetailModal] = useState(null);
+        const [expenseDetailModal, setExpenseDetailModal] = useState(null);
         const [selectedClosedShift, setSelectedClosedShift] = useState(null);
 
         const navStackRef = useRef(['tab:order']);
@@ -535,6 +536,7 @@
           if (shiftModalMode) return 'modal:shift';
           if (selectedClosedShift) return 'modal:closedShift';
           if (dashboardDetailModal) return 'modal:dashboardDetail';
+          if (expenseDetailModal) return 'modal:expenseDetail';
           if (billDrawerOpen) return 'modal:bill';
           if (settingsDrawerOpen) return 'modal:settings';
           if (mobileCartOpen) return 'modal:cart';
@@ -603,6 +605,8 @@
               setSelectedClosedShift(null);
             } else if (st.dashboardDetailModal) {
               setDashboardDetailModal(null);
+            } else if (st.expenseDetailModal) {
+              setExpenseDetailModal(null);
             } else if (st.billDrawerOpen) {
               setBillDrawerOpen(false);
             } else if (st.settingsDrawerOpen) {
@@ -3681,23 +3685,224 @@
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">OMZET KOTOR SHIFT</p>
+                      <button
+                        type="button"
+                        onClick={() => setExpenseDetailModal('gross')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-teal-500 dark:hover:border-teal-500 bg-white dark:bg-slate-900 transition active:scale-[0.99]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">OMZET KOTOR SHIFT</p>
+                          <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">Rincian →</span>
+                        </div>
                         <p className="text-xl font-extrabold mt-1">{formatRp(activeShiftTotals.gross)}</p>
-                      </div>
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">KAS KELUAR SHIFT AKTIF</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{activeShiftOrders.length} transaksi shift aktif</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setExpenseDetailModal('out')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-rose-500 dark:hover:border-rose-500 bg-white dark:bg-slate-900 transition active:scale-[0.99]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">KAS KELUAR SHIFT AKTIF</p>
+                          <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">Rincian →</span>
+                        </div>
                         <p className="text-xl font-extrabold text-rose-600 mt-1">{formatRp(activeShiftExpenseTotal)}</p>
-                      </div>
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">ESTIMASI SALDO SHIFT</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{activeShiftExpenses.length} item pengeluaran shift</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setExpenseDetailModal('balance')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900 transition active:scale-[0.99]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">ESTIMASI SALDO SHIFT</p>
+                          <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">Rincian →</span>
+                        </div>
                         <p className="text-xl font-extrabold text-emerald-600 mt-1">{formatRp(activeShiftKopkayIncome - activeShiftExpenseTotal)}</p>
-                      </div>
-                      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">ESTIMASI LACI TUNAI</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Hak Kopkay + komisi - biaya shift</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setExpenseDetailModal('drawer')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-teal-500 dark:hover:border-teal-500 bg-white dark:bg-slate-900 transition active:scale-[0.99]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">ESTIMASI LACI TUNAI</p>
+                          <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">Rincian →</span>
+                        </div>
                         <p className="text-xl font-extrabold text-teal-600 mt-1">{formatRp(netDrawerCashAfterExpenses)}</p>
-                      </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Modal {formatRp(shiftState?.openingCash || 0)} + Tunai {formatRp(cashSalesTotal)} - Kas Keluar {formatRp(cashExpensesFromDrawer)}
+                        </p>
+                      </button>
                     </div>
+
+                    {expenseDetailModal && (
+                      <div
+                        onClick={() => setExpenseDetailModal(null)}
+                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+                      >
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[85vh] flex flex-col"
+                        >
+                          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800">
+                            <div>
+                              <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                                {expenseDetailModal === 'drawer' && 'Rincian Estimasi Laci Tunai (Shift Aktif)'}
+                                {expenseDetailModal === 'gross' && 'Rincian Omzet Kotor Shift Aktif'}
+                                {expenseDetailModal === 'out' && 'Rincian Kas Keluar Shift Aktif'}
+                                {expenseDetailModal === 'balance' && 'Rincian Estimasi Saldo Shift Aktif'}
+                              </h3>
+                              <p className="text-[11px] text-slate-500">
+                                {expenseDetailModal === 'drawer' && 'Perhitungan uang fisik tunai yang seharusnya ada di laci saat ini'}
+                                {expenseDetailModal === 'gross' && 'Pembagian metode bayar & omzet per tenant pada shift aktif'}
+                                {expenseDetailModal === 'out' && 'Daftar pengeluaran pada shift aktif beserta sumber dananya'}
+                                {expenseDetailModal === 'balance' && 'Pendapatan bersih Kopkay dikurangi seluruh pengeluaran shift aktif'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setExpenseDetailModal(null)}
+                              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"
+                            >
+                              <Icon name="x" className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto space-y-3 text-xs pr-0.5">
+                            {expenseDetailModal === 'drawer' && (
+                              <>
+                                <div className="p-3.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 space-y-2">
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600 dark:text-slate-300">Modal Awal Shift</span>
+                                    <span className="font-bold">{formatRp(shiftState?.openingCash || 0)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600 dark:text-slate-300">(+) Penjualan Tunai Shift Ini</span>
+                                    <span className="font-bold text-emerald-600">+{formatRp(cashSalesTotal)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600 dark:text-slate-300">(-) Pengeluaran Sumber Kas Tunai</span>
+                                    <span className="font-bold text-rose-600">-{formatRp(cashExpensesFromDrawer)}</span>
+                                  </div>
+                                  <div className="flex justify-between pt-2 border-t border-teal-200 dark:border-teal-800 font-extrabold text-sm text-teal-700 dark:text-teal-300">
+                                    <span>Estimasi Laci Tunai</span>
+                                    <span>{formatRp(netDrawerCashAfterExpenses)}</span>
+                                  </div>
+                                </div>
+
+                                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-1 text-[11px] text-slate-500">
+                                  <p className="font-bold text-slate-700 dark:text-slate-200">Info Tambahan (Tidak Masuk Laci Tunai):</p>
+                                  <div className="flex justify-between">
+                                    <span>Penjualan QRIS / Non-Tunai Shift Ini:</span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-300">{formatRp(qrisSalesTotal)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Pengeluaran Sumber Transfer / Rekening:</span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                      {formatRp(Math.max(0, activeShiftExpenseTotal - cashExpensesFromDrawer))}
+                                    </span>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+
+                            {expenseDetailModal === 'gross' && (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] text-slate-500">Masuk Tunai</p>
+                                    <p className="font-extrabold text-sm mt-0.5">{formatRp(cashSalesTotal)}</p>
+                                  </div>
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] text-slate-500">Masuk QRIS</p>
+                                    <p className="font-extrabold text-sm mt-0.5">{formatRp(qrisSalesTotal)}</p>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {activeShiftSummaryByTenant.map((row) => (
+                                    <div key={row.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                                      <div>
+                                        <p className="font-bold text-slate-900 dark:text-white">{row.name}</p>
+                                        <p className="text-[11px] text-slate-400">{row.totalQty} item terjual</p>
+                                      </div>
+                                      <span className="font-extrabold text-teal-600 dark:text-teal-400">{formatRp(row.grossSales)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+
+                            {expenseDetailModal === 'out' && (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="p-3 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
+                                    <p className="text-[11px] text-slate-500">Dari Kas Tunai</p>
+                                    <p className="font-extrabold text-sm text-rose-600 mt-0.5">{formatRp(cashExpensesFromDrawer)}</p>
+                                  </div>
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] text-slate-500">Dari Transfer / Rekening</p>
+                                    <p className="font-extrabold text-sm mt-0.5">
+                                      {formatRp(Math.max(0, activeShiftExpenseTotal - cashExpensesFromDrawer))}
+                                    </p>
+                                  </div>
+                                </div>
+                                {activeShiftExpenses.length === 0 ? (
+                                  <p className="text-center text-slate-400 py-4">Belum ada pengeluaran pada shift aktif.</p>
+                                ) : (
+                                  <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
+                                    {activeShiftExpenses.map((ex) => (
+                                      <div key={ex.id} className="py-2 flex items-center justify-between gap-2">
+                                        <div>
+                                          <p className="font-bold">{ex.title}</p>
+                                          <p className="text-[11px] text-slate-400">{ex.category} • {ex.source}</p>
+                                        </div>
+                                        <span className="font-extrabold text-rose-600">-{formatRp(ex.amount)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {expenseDetailModal === 'balance' && (
+                              <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600 dark:text-slate-300">Omzet Menu Kopkay Shift Ini</span>
+                                  <span className="font-bold">
+                                    {formatRp(activeShiftSummaryByTenant.find((t) => t.id === 'kopkay')?.grossSales || 0)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600 dark:text-slate-300">(+) Komisi Tenant 10% Shift Ini</span>
+                                  <span className="font-bold text-amber-600">+{formatRp(activeShiftTotals.commission)}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-600 dark:text-slate-300">(-) Kas Keluar Shift Aktif</span>
+                                  <span className="font-bold text-rose-600">-{formatRp(activeShiftExpenseTotal)}</span>
+                                </div>
+                                <div className="flex justify-between pt-2 border-t border-emerald-200 dark:border-emerald-800 font-extrabold text-sm text-emerald-700 dark:text-emerald-300">
+                                  <span>Estimasi Saldo Shift</span>
+                                  <span>{formatRp(activeShiftKopkayIncome - activeShiftExpenseTotal)}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setExpenseDetailModal(null)}
+                            className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                          >
+                            Tutup Rincian
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     <form
                       onSubmit={handleAddExpense}
