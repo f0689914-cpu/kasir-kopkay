@@ -828,15 +828,21 @@
         const activeShiftOrders = useMemo(() => {
           if (!shiftState?.isOpen) return [];
           const activeId = shiftState?.shiftId;
-          return orders.filter((o) => !activeId || !o.shiftId || o.shiftId === activeId);
+          return orders.filter((o) => !o.closedShiftId && (!activeId || !o.shiftId || o.shiftId === activeId));
         }, [orders, shiftState?.isOpen, shiftState?.shiftId]);
 
         const cashSalesTotal = useMemo(
-          () => activeShiftOrders.filter((o) => o.paymentMethod === 'Tunai').reduce((sum, o) => sum + (o.total || 0), 0),
+          () =>
+            activeShiftOrders
+              .filter((o) => o.paymentMethod === 'Tunai')
+              .reduce((sum, o) => sum + (o.paidNow !== undefined ? Number(o.paidNow) : Number(o.total) || 0), 0),
           [activeShiftOrders]
         );
         const qrisSalesTotal = useMemo(
-          () => activeShiftOrders.filter((o) => o.paymentMethod !== 'Tunai').reduce((sum, o) => sum + (o.total || 0), 0),
+          () =>
+            activeShiftOrders
+              .filter((o) => o.paymentMethod !== 'Tunai')
+              .reduce((sum, o) => sum + (o.paidNow !== undefined ? Number(o.paidNow) : Number(o.total) || 0), 0),
           [activeShiftOrders]
         );
         const expectedDrawerCash = shiftState?.isOpen
@@ -919,15 +925,17 @@
           setExpenses((prev) => prev.filter((ex) => ex.id !== id));
         };
 
+        const activeShiftExpenseTotal = useMemo(
+          () => activeShiftExpenses.reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0),
+          [activeShiftExpenses]
+        );
+
         const handleConfirmClosingShift = (e) => {
           e.preventDefault();
-          const actualCash = closingActualCashInput === '' ? expectedDrawerCash : Number(closingActualCashInput) || 0;
+          const actualCash = closingActualCashInput === '' ? netDrawerCashAfterExpenses : Number(closingActualCashInput) || 0;
           const activeShfId = shiftState?.shiftId;
           const closedTimestamp = new Date().toISOString();
           const closingId = 'CLS-' + String(Date.now()).slice(-6);
-          const currentShiftExpenseTotal = expenses
-            .filter((ex) => !ex.closedAt)
-            .reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0);
           const closingRecord = {
             id: closingId,
             shiftId: activeShfId || 'SHF-LEGACY',
@@ -937,16 +945,16 @@
             openingCash: Number(shiftState.openingCash) || 0,
             cashSales: cashSalesTotal,
             qrisSales: qrisSalesTotal,
-            grossSales: shiftTotals.gross,
-            commissionCut: shiftTotals.commission,
-            kopkayNet: kopkayIncome,
-            expenseTotal: currentShiftExpenseTotal,
+            grossSales: activeShiftTotals.gross,
+            commissionCut: activeShiftTotals.commission,
+            kopkayNet: activeShiftKopkayIncome,
+            expenseTotal: activeShiftExpenseTotal,
             expectedDrawerCash: netDrawerCashAfterExpenses,
             actualCash,
             variance: actualCash - netDrawerCashAfterExpenses,
-            totalOrders: orders.length,
+            totalOrders: activeShiftOrders.length,
             note: closingNoteInput.trim(),
-            tenantSummary: summaryByTenant.map((t) => ({
+            tenantSummary: activeShiftSummaryByTenant.map((t) => ({
               id: t.id,
               name: t.name,
               totalQty: t.totalQty,
@@ -956,7 +964,8 @@
             })),
             itemsSold: (() => {
               const map = new Map();
-              orders.forEach((ord) => {
+              activeShiftOrders.forEach((ord) => {
+                if (ord.isDpPayment) return;
                 (ord.items || []).forEach((it) => {
                   const k = `${it.tenantId}__${it.id}__${it.name}`;
                   const cur = map.get(k);
@@ -977,18 +986,22 @@
               });
               return Array.from(map.values()).sort((a, b) => b.qty - a.qty);
             })(),
-            shiftExpenses: expenses
-              .filter((ex) => !ex.closedAt)
-              .map((ex) => ({
-                id: ex.id,
-                title: ex.title,
-                amount: Number(ex.amount) || 0,
-                category: ex.category,
-                source: ex.source,
-              })),
+            shiftExpenses: activeShiftExpenses.map((ex) => ({
+              id: ex.id,
+              title: ex.title,
+              amount: Number(ex.amount) || 0,
+              category: ex.category,
+              source: ex.source,
+            })),
           };
           setClosedShifts((prev) => [closingRecord, ...prev]);
-          setOrders((prev) => prev.filter((o) => activeShfId && o.shiftId && o.shiftId !== activeShfId));
+          setOrders((prev) =>
+            prev.map((o) =>
+              !activeShfId || !o.shiftId || o.shiftId === activeShfId
+                ? { ...o, closedShiftId: closingId }
+                : o
+            )
+          );
           setExpenses((prev) =>
             prev.map((ex) =>
               !ex.closedAt
@@ -1418,12 +1431,19 @@
             );
           }
 
-          // Update status meja lama -> kosong, meja baru -> terisi
+          // Update status meja lama -> kosong (hanya jika bill asal memang Dine-in), meja baru -> terisi
           setTables((prev) =>
             prev.map((t) => {
-              if (t.name === tableName) return { ...t, status: 'available', guestName: '' };
-              if (t.name === transferTargetTable)
-                return { ...t, status: 'occupied', guestName: customerName.trim() || 'Bill Aktif' };
+              if (sourceBill.orderType === 'Dine-in' && t.name === sourceBill.tableName) {
+                return { ...t, status: 'available', guestName: '' };
+              }
+              if (t.name === transferTargetTable) {
+                return {
+                  ...t,
+                  status: 'occupied',
+                  guestName: customerName.trim() || targetBill?.customerName || 'Bill Aktif',
+                };
+              }
               return t;
             })
           );
@@ -1560,6 +1580,27 @@
               return;
             }
 
+            const dpOrder = {
+              id: 'ORD-' + String(Date.now()).slice(-6),
+              shiftId: shiftState?.shiftId || 'default',
+              createdAt: new Date().toISOString(),
+              orderType,
+              tableName: `${orderType === 'Dine-in' ? tableName : 'Takeaway'} (DP/Cicil)`,
+              customerName: customerName.trim() || 'Pelanggan DP',
+              orderNote: [`DP / Cicil (${formatRp(newPaidAccum)} / ${formatRp(subtotal)})`, orderNote.trim()]
+                .filter(Boolean)
+                .join(' • '),
+              items: [...cart],
+              total: splitPayNowAmount,
+              paidNow: splitPayNowAmount,
+              paymentMethod: splitPayMethod,
+              cashReceived: splitPayNowAmount,
+              changeAmount: 0,
+              isDpPayment: true,
+              tenantBreakdown: [],
+            };
+
+            setOrders((prev) => [dpOrder, ...prev]);
             setOpenBills((prev) =>
               prev.map((b) =>
                 b.id === activeBillId
@@ -1575,15 +1616,8 @@
             );
             setActiveBillPaidBefore(newPaidAccum);
             setSplitModalOpen(false);
+            setReceiptOrder(dpOrder);
           }
-        };
-
-        const getLocalDateKey = (isoOrDate) => {
-          const d = new Date(isoOrDate);
-          const y = d.getFullYear();
-          const m = String(d.getMonth() + 1).padStart(2, '0');
-          const day = String(d.getDate()).padStart(2, '0');
-          return `${y}-${m}-${day}`;
         };
 
         const filteredReportOrders = useMemo(() => {
@@ -1608,6 +1642,7 @@
         const productSalesByTenant = useMemo(() => {
           const map = new Map();
           filteredReportOrders.forEach((order) => {
+            if (order.isDpPayment) return;
             order.items.forEach((item) => {
               const key = `${item.tenantId}__${item.id}__${item.name}`;
               const existing = map.get(key);
@@ -1658,6 +1693,7 @@
             let grossSales = 0;
             let totalQty = 0;
             filteredReportOrders.forEach((order) => {
+              if (order.isDpPayment) return;
               order.items.forEach((item) => {
                 if (item.tenantId === tenant.id) {
                   grossSales += item.price * item.qty;
@@ -1696,6 +1732,7 @@
             let grossSales = 0;
             let totalQty = 0;
             todayOrders.forEach((order) => {
+              if (order.isDpPayment) return;
               order.items.forEach((item) => {
                 if (item.tenantId === tenant.id) {
                   grossSales += item.price * item.qty;
@@ -1749,6 +1786,7 @@
             let grossSales = 0;
             let totalQty = 0;
             activeShiftOrders.forEach((order) => {
+              if (order.isDpPayment) return;
               order.items.forEach((item) => {
                 if (item.tenantId === tenant.id) {
                   grossSales += item.price * item.qty;
@@ -1784,6 +1822,7 @@
 
         const allTimeKopkayRevenue = useMemo(() => {
           return orders.reduce((sum, order) => {
+            if (order.isDpPayment) return sum;
             let kopkayPart = 0;
             (order.items || []).forEach((item) => {
               const tInfo = tenants.find((t) => t.id === item.tenantId);
@@ -1799,7 +1838,7 @@
         }, [orders, tenants]);
 
         const allTimeGrossAllTenants = useMemo(
-          () => orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0),
+          () => orders.filter((o) => !o.isDpPayment).reduce((sum, o) => sum + (Number(o.total) || 0), 0),
           [orders]
         );
 
@@ -1816,6 +1855,7 @@
         const monthlyPphBreakdown = useMemo(() => {
           const monthMap = new Map();
           orders.forEach((order) => {
+            if (order.isDpPayment) return;
             const d = new Date(order.createdAt);
             const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             const monthLabel = d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
@@ -1889,21 +1929,37 @@
             t.netPayout,
           ]);
           rows.push(['"TOTAL"', '""', shiftTotals.qty, shiftTotals.gross, shiftTotals.commission, shiftTotals.net]);
-          const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+          const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
-          link.setAttribute('href', encodeURI(csv));
-          link.setAttribute('download', `rekap-shift-kopkay-${new Date().toISOString().slice(0, 10)}.csv`);
+          link.href = url;
+          link.download = `rekap-shift-kopkay-${new Date().toISOString().slice(0, 10)}.csv`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
+          URL.revokeObjectURL(url);
         };
 
         const exportJSON = () => {
-          const blob = new Blob([JSON.stringify(orders, null, 2)], { type: 'application/json' });
+          const backupPayload = {
+            version: 'kopkay_backup_v3_5_0_6',
+            exportedAt: new Date().toISOString(),
+            orders,
+            openBills,
+            tenants,
+            menuItems,
+            tables,
+            expenses,
+            closedShifts,
+            pphConfig,
+            pphPayments,
+          };
+          const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `backup-kopkay-${new Date().toISOString().slice(0, 10)}.json`;
+          a.download = `backup-lengkap-kopkay-${new Date().toISOString().slice(0, 10)}.json`;
           a.click();
           URL.revokeObjectURL(url);
         };
@@ -3180,7 +3236,21 @@
                             r.onload = (ev) => {
                               try {
                                 const parsed = JSON.parse(ev.target.result);
-                                if (Array.isArray(parsed)) setOrders(parsed);
+                                if (Array.isArray(parsed)) {
+                                  setOrders(parsed);
+                                  alert(`Restore berhasil: ${parsed.length} transaksi dimuat.`);
+                                } else if (parsed && typeof parsed === 'object') {
+                                  if (Array.isArray(parsed.orders)) setOrders(parsed.orders);
+                                  if (Array.isArray(parsed.openBills)) setOpenBills(parsed.openBills);
+                                  if (Array.isArray(parsed.tenants) && parsed.tenants.length > 0) setTenants(parsed.tenants);
+                                  if (Array.isArray(parsed.menuItems) && parsed.menuItems.length > 0) setMenuItems(parsed.menuItems);
+                                  if (Array.isArray(parsed.tables) && parsed.tables.length > 0) setTables(dedupTables(parsed.tables));
+                                  if (Array.isArray(parsed.expenses)) setExpenses(parsed.expenses);
+                                  if (Array.isArray(parsed.closedShifts)) setClosedShifts(parsed.closedShifts);
+                                  if (parsed.pphConfig && typeof parsed.pphConfig === 'object') setPphConfig(parsed.pphConfig);
+                                  if (Array.isArray(parsed.pphPayments)) setPphPayments(parsed.pphPayments);
+                                  alert('Restore data lengkap KOPKAY berhasil!');
+                                }
                               } catch {}
                             };
                             r.readAsText(f);
@@ -3395,7 +3465,7 @@
                         <button
                           type="button"
                           onClick={() => {
-                            setClosingActualCashInput(String(expectedDrawerCash));
+                            setClosingActualCashInput(String(netDrawerCashAfterExpenses));
                             setClosingNoteInput('');
                             setShiftModalMode('closing');
                           }}
@@ -3592,13 +3662,16 @@
                             `"${ex.note || ''}"`,
                           ]);
                           rows.push(['"TOTAL"', '""', '""', '""', visibleExpenses.reduce((s, x) => s + (x.amount || 0), 0), '""']);
-                          const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+                          const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+                          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                          const url = URL.createObjectURL(blob);
                           const link = document.createElement('a');
-                          link.setAttribute('href', encodeURI(csv));
-                          link.setAttribute('download', `pengeluaran-kopkay-${new Date().toISOString().slice(0, 10)}.csv`);
+                          link.href = url;
+                          link.download = `pengeluaran-kopkay-${new Date().toISOString().slice(0, 10)}.csv`;
                           document.body.appendChild(link);
                           link.click();
                           document.body.removeChild(link);
+                          URL.revokeObjectURL(url);
                         }}
                         className="px-3 py-2 rounded-xl bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5"
                       >
@@ -3613,12 +3686,12 @@
                         <p className="text-xl font-extrabold mt-1">{formatRp(activeShiftTotals.gross)}</p>
                       </div>
                       <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">TOTAL KAS KELUAR ({expensePeriod === 'all' ? 'SEMUA' : expensePeriod.toUpperCase()})</p>
-                        <p className="text-xl font-extrabold text-rose-600 mt-1">{formatRp(totalExpensesAll)}</p>
+                        <p className="text-xs font-semibold text-slate-500">KAS KELUAR SHIFT AKTIF</p>
+                        <p className="text-xl font-extrabold text-rose-600 mt-1">{formatRp(activeShiftExpenseTotal)}</p>
                       </div>
                       <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <p className="text-xs font-semibold text-slate-500">ESTIMASI SALDO SETELAH BIAYA</p>
-                        <p className="text-xl font-extrabold text-emerald-600 mt-1">{formatRp(activeShiftKopkayIncome - totalExpensesAll)}</p>
+                        <p className="text-xs font-semibold text-slate-500">ESTIMASI SALDO SHIFT</p>
+                        <p className="text-xl font-extrabold text-emerald-600 mt-1">{formatRp(activeShiftKopkayIncome - activeShiftExpenseTotal)}</p>
                       </div>
                       <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                         <p className="text-xs font-semibold text-slate-500">ESTIMASI LACI TUNAI</p>
@@ -4785,7 +4858,7 @@
                       <button
                         type="button"
                         onClick={() => {
-                          setClosingActualCashInput(String(expectedDrawerCash));
+                          setClosingActualCashInput(String(netDrawerCashAfterExpenses));
                           setClosingNoteInput('');
                           setSettingsDrawerOpen(false);
                           setShiftModalMode('closing');
@@ -4921,12 +4994,12 @@
                           <span className="font-bold">{formatRp(qrisSalesTotal)}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">Total Omzet Shift ({orders.length} trx)</span>
-                          <span className="font-extrabold text-teal-600">{formatRp(shiftTotals.gross)}</span>
+                          <span className="text-slate-500">Total Omzet Shift ({activeShiftOrders.length} trx)</span>
+                          <span className="font-extrabold text-teal-600">{formatRp(activeShiftTotals.gross)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Komisi Tenant 10%</span>
-                          <span className="font-bold text-amber-600">{formatRp(shiftTotals.commission)}</span>
+                          <span className="font-bold text-amber-600">{formatRp(activeShiftTotals.commission)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Pengeluaran Kas Tunai</span>
@@ -5232,9 +5305,21 @@
                     </div>
                     <div className="space-y-1 text-[11px]">
                       <div className="flex justify-between font-bold text-xs">
-                        <span>TOTAL</span>
+                        <span>{receiptOrder.isDpPayment ? 'BAYAR DP / CICIL' : 'TOTAL'}</span>
                         <span>{formatRp(receiptOrder.total)}</span>
                       </div>
+                      {receiptOrder.paidBefore > 0 && (
+                        <>
+                          <div className="flex justify-between text-emerald-700 dark:text-emerald-400">
+                            <span>Sudah DP Sebelumnya</span>
+                            <span>-{formatRp(receiptOrder.paidBefore)}</span>
+                          </div>
+                          <div className="flex justify-between font-bold">
+                            <span>Sisa Tagihan</span>
+                            <span>{formatRp(receiptOrder.paidNow)}</span>
+                          </div>
+                        </>
+                      )}
                       <div className="flex justify-between">
                         <span>Bayar ({receiptOrder.paymentMethod})</span>
                         <span>{formatRp(receiptOrder.cashReceived)}</span>
@@ -5338,8 +5423,12 @@
         });
         lines.push('--------------------------------\n');
         lines.push(ESC + 'E\x01');
-        lines.push(padReceiptRow('TOTAL', 'Rp ' + Number(order.total).toLocaleString('id-ID'), 32) + '\n');
+        lines.push(padReceiptRow(order.isDpPayment ? 'BAYAR DP' : 'TOTAL', 'Rp ' + Number(order.total).toLocaleString('id-ID'), 32) + '\n');
         lines.push(ESC + 'E\x00');
+        if (order.paidBefore > 0) {
+          lines.push(padReceiptRow('Sudah DP', '-Rp ' + Number(order.paidBefore).toLocaleString('id-ID'), 32) + '\n');
+          lines.push(padReceiptRow('Sisa Bayar', 'Rp ' + Number(order.paidNow).toLocaleString('id-ID'), 32) + '\n');
+        }
         lines.push(padReceiptRow(`Bayar (${order.paymentMethod})`, 'Rp ' + Number(order.cashReceived).toLocaleString('id-ID'), 32) + '\n');
         lines.push(padReceiptRow('Kembali', 'Rp ' + Number(order.changeAmount).toLocaleString('id-ID'), 32) + '\n');
         if (order.orderNote) {
@@ -5405,8 +5494,43 @@
         return device.name || 'Printer Thermal Bluetooth';
       };
 
+      class ErrorBoundary extends React.Component {
+        constructor(props) {
+          super(props);
+          this.state = { hasError: false, errorMsg: '' };
+        }
+        static getDerivedStateFromError(error) {
+          return { hasError: true, errorMsg: error?.message || String(error) };
+        }
+        componentDidCatch(error, info) {
+          console.error('KOPKAY UI Error:', error, info);
+        }
+        render() {
+          if (this.state.hasError) {
+            return (
+              <div style={{ padding: 24, fontFamily: 'Inter, sans-serif' }}>
+                <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Terjadi kendala tampilan</h2>
+                <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>{this.state.errorMsg}</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  style={{ padding: '8px 14px', borderRadius: 10, background: '#0d9488', color: '#fff', border: 0, fontWeight: 700 }}
+                >
+                  Muat Ulang
+                </button>
+              </div>
+            );
+          }
+          return this.props.children;
+        }
+      }
+
       const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(<App />);
+      root.render(
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
+      );
     </script>
   </body>
 </html>
