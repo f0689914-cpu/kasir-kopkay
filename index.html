@@ -507,6 +507,7 @@
         const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
         const [dashboardDetailModal, setDashboardDetailModal] = useState(null);
         const [expenseDetailModal, setExpenseDetailModal] = useState(null);
+        const [reportDetailModal, setReportDetailModal] = useState(null);
         const [selectedClosedShift, setSelectedClosedShift] = useState(null);
 
         const navStackRef = useRef(['tab:order']);
@@ -518,6 +519,8 @@
           billDrawerOpen,
           settingsDrawerOpen,
           dashboardDetailModal,
+          expenseDetailModal,
+          reportDetailModal,
           selectedClosedShift,
           shiftModalMode,
           pinModalOpen,
@@ -537,6 +540,7 @@
           if (selectedClosedShift) return 'modal:closedShift';
           if (dashboardDetailModal) return 'modal:dashboardDetail';
           if (expenseDetailModal) return 'modal:expenseDetail';
+          if (reportDetailModal) return 'modal:reportDetail';
           if (billDrawerOpen) return 'modal:bill';
           if (settingsDrawerOpen) return 'modal:settings';
           if (mobileCartOpen) return 'modal:cart';
@@ -550,6 +554,8 @@
           shiftModalMode,
           selectedClosedShift,
           dashboardDetailModal,
+          expenseDetailModal,
+          reportDetailModal,
           billDrawerOpen,
           settingsDrawerOpen,
           mobileCartOpen,
@@ -607,6 +613,8 @@
               setDashboardDetailModal(null);
             } else if (st.expenseDetailModal) {
               setExpenseDetailModal(null);
+            } else if (st.reportDetailModal) {
+              setReportDetailModal(null);
             } else if (st.billDrawerOpen) {
               setBillDrawerOpen(false);
             } else if (st.settingsDrawerOpen) {
@@ -1785,6 +1793,50 @@
             .filter((t) => t.id === 'kopkay')
             .reduce((sum, t) => sum + t.grossSales, 0) + shiftTotals.commission;
 
+        const reportPeriodCashSales = useMemo(
+          () =>
+            filteredReportOrders
+              .filter((o) => o.paymentMethod === 'Tunai')
+              .reduce((sum, o) => sum + (o.paidNow !== undefined ? Number(o.paidNow) : Number(o.total) || 0), 0),
+          [filteredReportOrders]
+        );
+
+        const reportPeriodQrisSales = useMemo(
+          () =>
+            filteredReportOrders
+              .filter((o) => o.paymentMethod !== 'Tunai')
+              .reduce((sum, o) => sum + (o.paidNow !== undefined ? Number(o.paidNow) : Number(o.total) || 0), 0),
+          [filteredReportOrders]
+        );
+
+        const filteredReportExpenses = useMemo(() => {
+          const list = Array.isArray(expenses) ? expenses : [];
+          if (reportPeriod === 'all') return list;
+          const nowDate = new Date();
+          const todayKey = getLocalDateKey(nowDate);
+          const yesterdayDate = new Date(nowDate);
+          yesterdayDate.setDate(nowDate.getDate() - 1);
+          const yesterdayKey = getLocalDateKey(yesterdayDate);
+          if (reportPeriod === 'today') {
+            return list.filter((ex) => ex && getLocalDateKey(ex.createdAt) === todayKey);
+          }
+          if (reportPeriod === 'yesterday') {
+            return list.filter((ex) => ex && getLocalDateKey(ex.createdAt) === yesterdayKey);
+          }
+          const days = reportPeriod === '7d' ? 7 : 30;
+          const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+          return list.filter((ex) => {
+            if (!ex) return false;
+            const ts = new Date(ex.createdAt).getTime();
+            return !Number.isNaN(ts) && ts >= cutoff;
+          });
+        }, [expenses, reportPeriod]);
+
+        const reportPeriodExpenseTotal = useMemo(
+          () => filteredReportExpenses.reduce((sum, ex) => sum + (Number(ex.amount) || 0), 0),
+          [filteredReportExpenses]
+        );
+
         const activeShiftSummaryByTenant = useMemo(() => {
           return tenants.map((tenant) => {
             let grossSales = 0;
@@ -2328,7 +2380,7 @@
         );
 
         return (
-          <div className="h-screen w-screen overflow-hidden flex flex-col lg:flex-row bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+          <div className="h-[100dvh] w-full overflow-hidden flex flex-col lg:flex-row bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
             {/* Desktop Sidebar */}
             <aside className="hidden lg:flex w-64 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex-col justify-between">
               <div>
@@ -2525,7 +2577,7 @@
               <main className="flex-1 flex overflow-hidden relative">
                 {activeTab === 'order' && (
                   <div className="flex-1 flex overflow-hidden">
-                    <div className="flex-1 flex flex-col overflow-hidden p-3 lg:p-6 pb-20 lg:pb-6">
+                    <div className={`flex-1 flex flex-col overflow-hidden p-3 lg:p-6 ${(totalCartQty > 0 || openBills.length > 0) ? "pb-20 lg:pb-6" : "pb-3 lg:pb-6"}`}>
                       {/* Filter Tenant */}
                       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 shrink-0">
                         <button
@@ -2979,6 +3031,56 @@
                       </button>
                     </div>
 
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
+                      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="font-bold text-sm">Rincian Bagi Hasil per Tenant (Hari Ini)</h3>
+                          <p className="text-[11px] text-slate-500">
+                            Tunai: {formatRp(todayOrders.filter((o) => o.paymentMethod === 'Tunai').reduce((s, o) => s + (o.paidNow !== undefined ? Number(o.paidNow) : Number(o.total) || 0), 0))} • QRIS:{' '}
+                            {formatRp(todayOrders.filter((o) => o.paymentMethod !== 'Tunai').reduce((s, o) => s + (o.paidNow !== undefined ? Number(o.paidNow) : Number(o.total) || 0), 0))}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('report')}
+                          className="text-xs font-bold text-teal-600 dark:text-teal-400"
+                        >
+                          Rincian per Produk →
+                        </button>
+                      </div>
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 text-slate-500">
+                            <th className="p-3 font-bold">Tenant</th>
+                            <th className="p-3 font-bold text-right">Item</th>
+                            <th className="p-3 font-bold text-right">Omzet Kotor</th>
+                            <th className="p-3 font-bold text-right">Potongan 10%</th>
+                            <th className="p-3 font-bold text-right">Hak Bersih</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {todaySummaryByTenant.map((row) => (
+                            <tr key={row.id}>
+                              <td className="p-3 font-bold">{row.name}</td>
+                              <td className="p-3 text-right">{row.totalQty}</td>
+                              <td className="p-3 text-right">{formatRp(row.grossSales)}</td>
+                              <td className="p-3 text-right font-bold text-amber-600">{formatRp(row.commissionCut)}</td>
+                              <td className="p-3 text-right font-extrabold text-emerald-600">{formatRp(row.netPayout)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-slate-200 dark:border-slate-700 font-extrabold bg-slate-50 dark:bg-slate-950/50">
+                            <td className="p-3">TOTAL HARI INI</td>
+                            <td className="p-3 text-right">{todayShiftTotals.qty}</td>
+                            <td className="p-3 text-right">{formatRp(todayShiftTotals.gross)}</td>
+                            <td className="p-3 text-right text-amber-600">{formatRp(todayShiftTotals.commission)}</td>
+                            <td className="p-3 text-right text-emerald-600">{formatRp(todayShiftTotals.net)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
                       <h3 className="font-bold text-sm mb-3">Riwayat Transaksi Terbaru</h3>
                       {orders.length === 0 ? (
@@ -3287,6 +3389,244 @@
                         {filteredReportOrders.length} transaksi • {shiftTotals.qty} item keluar
                       </span>
                     </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
+                      <button
+                        type="button"
+                        onClick={() => setReportDetailModal('gross')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-teal-500 dark:hover:border-teal-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">OMZET KOTOR PERIODE</p>
+                          <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold">{formatRp(shiftTotals.gross)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          Tunai {formatRp(reportPeriodCashSales)} • QRIS {formatRp(reportPeriodQrisSales)}
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setReportDetailModal('kopkay')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">PENDAPATAN BERSIH KOPKAY</p>
+                          <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-emerald-600">{formatRp(kopkayIncome)}</p>
+                        <p className="text-[11px] text-slate-400">Menu Kopkay + komisi tenant 10%</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setReportDetailModal('commission')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-amber-500 dark:hover:border-amber-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">KOMISI TENANT (10%)</p>
+                          <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-amber-600">{formatRp(shiftTotals.commission)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          Hak bersih tenant: {formatRp(shiftTotals.net)}
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setReportDetailModal('expenses')}
+                        className="text-left p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-rose-500 dark:hover:border-rose-500 bg-white dark:bg-slate-900 transition active:scale-[0.99] space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold text-slate-500">PENGELUARAN & SALDO BERSIH</p>
+                          <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">Rincian →</span>
+                        </div>
+                        <p className="text-2xl font-extrabold text-rose-600">{formatRp(reportPeriodExpenseTotal)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          Sisa Estimasi: <strong className="text-slate-700 dark:text-slate-200">{formatRp(kopkayIncome - reportPeriodExpenseTotal)}</strong>
+                        </p>
+                      </button>
+                    </div>
+
+                    {reportDetailModal && (
+                      <div
+                        onClick={() => setReportDetailModal(null)}
+                        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+                      >
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[85vh] flex flex-col"
+                        >
+                          <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-slate-800">
+                            <div>
+                              <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                                {reportDetailModal === 'gross' && 'Rincian Omzet Kotor Periode Terpilih'}
+                                {reportDetailModal === 'kopkay' && 'Rincian Pendapatan Bersih Kopkay'}
+                                {reportDetailModal === 'commission' && 'Rincian Komisi & Setoran Tenant (10%)'}
+                                {reportDetailModal === 'expenses' && 'Rincian Pengeluaran & Estimasi Saldo Bersih'}
+                              </h3>
+                              <p className="text-[11px] text-slate-500">
+                                {reportDetailModal === 'gross' && 'Rincian metode pembayaran (Tunai / QRIS) & kontribusi omzet per tenant'}
+                                {reportDetailModal === 'kopkay' && 'Omzet menu utama Kopkay ditambah komisi 10% dari tenant mitra'}
+                                {reportDetailModal === 'commission' && 'Daftar tenant, skema potongan (10% / 0%), omzet kotor, & hak bersih'}
+                                {reportDetailModal === 'expenses' && 'Daftar pengeluaran pada periode terpilih beserta sisa saldo bersih'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setReportDetailModal(null)}
+                              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500"
+                            >
+                              <Icon name="x" className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto space-y-3 text-xs pr-0.5">
+                            {reportDetailModal === 'gross' && (
+                              <>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] text-slate-500">Masuk Tunai</p>
+                                    <p className="font-extrabold text-sm mt-0.5">{formatRp(reportPeriodCashSales)}</p>
+                                  </div>
+                                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] text-slate-500">Masuk QRIS / Non-Tunai</p>
+                                    <p className="font-extrabold text-sm mt-0.5">{formatRp(reportPeriodQrisSales)}</p>
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {summaryByTenant.map((row) => (
+                                    <div key={row.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                                      <div>
+                                        <p className="font-bold text-slate-900 dark:text-white">{row.name}</p>
+                                        <p className="text-[11px] text-slate-400">{row.totalQty} item terjual</p>
+                                      </div>
+                                      <span className="font-extrabold text-teal-600 dark:text-teal-400">{formatRp(row.grossSales)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+
+                            {reportDetailModal === 'kopkay' && (
+                              <div className="space-y-2.5">
+                                <div className="p-3.5 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600 dark:text-slate-300">Omzet Menu Kopitiam Kopi & Kaya</span>
+                                    <span className="font-bold">
+                                      {formatRp(summaryByTenant.find((t) => t.id === 'kopkay')?.grossSales || 0)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-slate-600 dark:text-slate-300">(+) Komisi Potongan Tenant (10%)</span>
+                                    <span className="font-bold text-amber-600">+{formatRp(shiftTotals.commission)}</span>
+                                  </div>
+                                  <div className="flex justify-between pt-1.5 border-t border-emerald-200 dark:border-emerald-800 font-extrabold text-emerald-700 dark:text-emerald-300">
+                                    <span>Total Pendapatan Bersih Kopkay</span>
+                                    <span>{formatRp(kopkayIncome)}</span>
+                                  </div>
+                                </div>
+                                <p className="text-[11px] text-slate-500">
+                                  Catatan: Kamie Hainan memiliki skema 0% potongan (omzetnya langsung menjadi hak Kamie Hainan), sedangkan tenant mitra seperti Lontong & Soto dan Joice dipotong komisi 10%.
+                                </p>
+                              </div>
+                            )}
+
+                            {reportDetailModal === 'commission' && (
+                              <div className="space-y-2">
+                                {summaryByTenant.map((row) => {
+                                  const ratePct = Math.round((row.commissionRate || 0) * 100);
+                                  return (
+                                    <div key={row.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-slate-900 dark:text-white">{row.name}</span>
+                                          <span
+                                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                              ratePct > 0
+                                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                            }`}
+                                          >
+                                            Potongan {ratePct}%
+                                          </span>
+                                        </div>
+                                        <span className="font-extrabold text-amber-600">
+                                          Komisi: {formatRp(row.commissionCut)}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between text-[11px] text-slate-500">
+                                        <span>Omzet: {formatRp(row.grossSales)} ({row.totalQty} item)</span>
+                                        <span>Hak Bersih Tenant: <strong className="text-emerald-600">{formatRp(row.netPayout)}</strong></span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {reportDetailModal === 'expenses' && (
+                              <div className="space-y-2.5">
+                                <div className="p-3.5 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 space-y-1.5">
+                                  <div className="flex justify-between">
+                                    <span>Pendapatan Bersih Kopkay</span>
+                                    <span className="font-bold">{formatRp(kopkayIncome)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-rose-600">
+                                    <span>Total Pengeluaran Periode Ini</span>
+                                    <span className="font-bold">-{formatRp(reportPeriodExpenseTotal)}</span>
+                                  </div>
+                                  <div className="flex justify-between pt-1.5 border-t border-rose-200 dark:border-rose-800 font-extrabold text-slate-900 dark:text-white">
+                                    <span>Sisa Estimasi Saldo Bersih</span>
+                                    <span>{formatRp(kopkayIncome - reportPeriodExpenseTotal)}</span>
+                                  </div>
+                                </div>
+
+                                {filteredReportExpenses.length === 0 ? (
+                                  <p className="text-center text-slate-400 py-4">Belum ada pengeluaran pada periode ini.</p>
+                                ) : (
+                                  <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl px-3">
+                                    {filteredReportExpenses.map((ex) => (
+                                      <div key={ex.id} className="py-2 flex items-center justify-between gap-2">
+                                        <div>
+                                          <p className="font-bold text-slate-900 dark:text-white">{ex.title}</p>
+                                          <p className="text-[11px] text-slate-400">
+                                            {ex.category} • {ex.source} • {new Date(ex.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                                          </p>
+                                        </div>
+                                        <span className="font-extrabold text-rose-600">-{formatRp(ex.amount)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReportDetailModal(null);
+                                if (reportDetailModal === 'expenses') setActiveTab('expenses');
+                              }}
+                              className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold"
+                            >
+                              {reportDetailModal === 'expenses' ? 'Kelola Pengeluaran' : 'OK, Mengerti'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setReportDetailModal(null)}
+                              className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold"
+                            >
+                              Tutup
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
                       <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
